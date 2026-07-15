@@ -37,7 +37,7 @@ So if the model needs the missing part, it knows to rerun the command with `TRIM
 
 Typical result: noisy output (test runners, npm installs, docker builds) shrinks ~80%. Short clean output is left completely alone — if compression would save less than 32 bytes, nothing changes.
 
-There's also an optional style file (`style/TERSE.md`, ~10 lines) that tells the agent to answer tersely — that trims the *output* side the same way the hooks trim the *input* side.
+There's also an optional style file (`style/TERSE.md`) that tells the agent how to answer — terse writing (drop filler, keep code/errors/numbers exact, no restating the question), plus a stance (have opinions, be resourceful before asking, bring a recommendation when you do ask). That trims the *output* side the same way the hooks trim the *input* side.
 
 ## Install
 
