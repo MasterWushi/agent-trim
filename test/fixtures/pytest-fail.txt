@@ -1,0 +1,79 @@
+============================= test session starts =============================
+platform linux -- Python 3.12.1, pytest-8.0.0, pluggy-1.4.0
+rootdir: /repo
+collected 52 items
+
+tests/test_core.py::test_case_0 PASSED [ 1%]
+tests/test_core.py::test_case_1 PASSED [ 3%]
+tests/test_core.py::test_case_2 PASSED [ 5%]
+tests/test_core.py::test_case_3 PASSED [ 7%]
+tests/test_core.py::test_case_4 PASSED [ 9%]
+tests/test_core.py::test_case_5 PASSED [ 11%]
+tests/test_core.py::test_case_6 PASSED [ 13%]
+tests/test_core.py::test_case_7 PASSED [ 15%]
+tests/test_core.py::test_case_8 PASSED [ 17%]
+tests/test_core.py::test_case_9 PASSED [ 19%]
+tests/test_core.py::test_case_10 PASSED [ 21%]
+tests/test_core.py::test_case_11 PASSED [ 23%]
+tests/test_core.py::test_case_12 PASSED [ 25%]
+tests/test_core.py::test_case_13 PASSED [ 26%]
+tests/test_core.py::test_case_14 PASSED [ 28%]
+tests/test_core.py::test_case_15 PASSED [ 30%]
+tests/test_core.py::test_case_16 PASSED [ 32%]
+tests/test_core.py::test_case_17 PASSED [ 34%]
+tests/test_core.py::test_case_18 PASSED [ 36%]
+tests/test_core.py::test_case_19 PASSED [ 38%]
+tests/test_core.py::test_case_20 PASSED [ 40%]
+tests/test_core.py::test_case_21 PASSED [ 42%]
+tests/test_core.py::test_case_22 PASSED [ 44%]
+tests/test_core.py::test_case_23 PASSED [ 46%]
+tests/test_core.py::test_case_24 PASSED [ 48%]
+tests/test_core.py::test_case_25 PASSED [ 50%]
+tests/test_core.py::test_case_26 PASSED [ 51%]
+tests/test_core.py::test_case_27 PASSED [ 53%]
+tests/test_core.py::test_case_28 PASSED [ 55%]
+tests/test_core.py::test_case_29 PASSED [ 57%]
+tests/test_core.py::test_case_30 PASSED [ 59%]
+tests/test_core.py::test_case_31 PASSED [ 61%]
+tests/test_core.py::test_case_32 PASSED [ 63%]
+tests/test_core.py::test_case_33 PASSED [ 65%]
+tests/test_core.py::test_case_34 PASSED [ 67%]
+tests/test_core.py::test_case_35 PASSED [ 69%]
+tests/test_core.py::test_case_36 PASSED [ 71%]
+tests/test_core.py::test_case_37 PASSED [ 73%]
+tests/test_core.py::test_case_38 PASSED [ 75%]
+tests/test_core.py::test_case_39 PASSED [ 76%]
+tests/test_core.py::test_case_40 PASSED [ 78%]
+tests/test_core.py::test_case_41 PASSED [ 80%]
+tests/test_core.py::test_case_42 PASSED [ 82%]
+tests/test_core.py::test_case_43 PASSED [ 84%]
+tests/test_core.py::test_case_44 PASSED [ 86%]
+tests/test_core.py::test_case_45 PASSED [ 88%]
+tests/test_core.py::test_case_46 PASSED [ 90%]
+tests/test_core.py::test_case_47 PASSED [ 92%]
+tests/test_core.py::test_case_48 PASSED [ 94%]
+tests/test_core.py::test_case_49 PASSED [ 96%]
+tests/test_auth.py::test_token_refresh FAILED [ 98%]
+tests/test_auth.py::test_expiry_clock_skew FAILED [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_token_refresh ______________________________
+
+    def test_token_refresh():
+        token = refresh(EXPIRED)
+>       assert token.ttl == 3600
+E       assert 0 == 3600
+E        +  where 0 = Token(ttl=0).ttl
+
+tests/test_auth.py:41: AssertionError
+__________________________ test_expiry_clock_skew _____________________________
+
+    def test_expiry_clock_skew():
+>       assert not is_expired(token, skew=30)
+E       AssertionError: assert not True
+
+tests/test_auth.py:58: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_auth.py::test_token_refresh - assert 0 == 3600
+FAILED tests/test_auth.py::test_expiry_clock_skew - AssertionError
+========================= 2 failed, 50 passed in 3.41s ========================

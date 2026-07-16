@@ -1,0 +1,75 @@
+
+ RUN  v2.1.4 /repo
+
+ ✓ test/unit/suite0.test.ts (15 tests) 20ms
+   ✓ suite0 > case 0 handles input 0 (0ms)
+   ✓ suite0 > case 1 handles input 1 (1ms)
+   ✓ suite0 > case 2 handles input 2 (2ms)
+   ✓ suite0 > case 3 handles input 3 (3ms)
+   ✓ suite0 > case 4 handles input 4 (4ms)
+   ✓ suite0 > case 5 handles input 5 (5ms)
+   ✓ suite0 > case 6 handles input 6 (6ms)
+   ✓ suite0 > case 7 handles input 7 (7ms)
+   ✓ suite0 > case 8 handles input 8 (8ms)
+   ✓ suite0 > case 9 handles input 9 (0ms)
+   ✓ suite0 > case 10 handles input 10 (1ms)
+   ✓ suite0 > case 11 handles input 11 (2ms)
+   ✓ suite0 > case 12 handles input 12 (3ms)
+   ✓ suite0 > case 13 handles input 13 (4ms)
+   ✓ suite0 > case 14 handles input 14 (5ms)
+ ✓ test/unit/suite1.test.ts (15 tests) 21ms
+   ✓ suite1 > case 0 handles input 0 (0ms)
+   ✓ suite1 > case 1 handles input 1 (1ms)
+   ✓ suite1 > case 2 handles input 2 (2ms)
+   ✓ suite1 > case 3 handles input 3 (3ms)
+   ✓ suite1 > case 4 handles input 4 (4ms)
+   ✓ suite1 > case 5 handles input 5 (5ms)
+   ✓ suite1 > case 6 handles input 6 (6ms)
+   ✓ suite1 > case 7 handles input 7 (7ms)
+   ✓ suite1 > case 8 handles input 8 (8ms)
+   ✓ suite1 > case 9 handles input 9 (0ms)
+   ✓ suite1 > case 10 handles input 10 (1ms)
+   ✓ suite1 > case 11 handles input 11 (2ms)
+   ✓ suite1 > case 12 handles input 12 (3ms)
+   ✓ suite1 > case 13 handles input 13 (4ms)
+   ✓ suite1 > case 14 handles input 14 (5ms)
+ ✓ test/unit/suite2.test.ts (15 tests) 22ms
+   ✓ suite2 > case 0 handles input 0 (0ms)
+   ✓ suite2 > case 1 handles input 1 (1ms)
+   ✓ suite2 > case 2 handles input 2 (2ms)
+   ✓ suite2 > case 3 handles input 3 (3ms)
+   ✓ suite2 > case 4 handles input 4 (4ms)
+   ✓ suite2 > case 5 handles input 5 (5ms)
+   ✓ suite2 > case 6 handles input 6 (6ms)
+   ✓ suite2 > case 7 handles input 7 (7ms)
+   ✓ suite2 > case 8 handles input 8 (8ms)
+   ✓ suite2 > case 9 handles input 9 (0ms)
+   ✓ suite2 > case 10 handles input 10 (1ms)
+   ✓ suite2 > case 11 handles input 11 (2ms)
+   ✓ suite2 > case 12 handles input 12 (3ms)
+   ✓ suite2 > case 13 handles input 13 (4ms)
+   ✓ suite2 > case 14 handles input 14 (5ms)
+ ❯ test/unit/order.test.ts (3 tests | 1 failed) 88ms
+   ✓ order > totals sum correctly (3ms)
+   ✓ order > empty cart is zero (1ms)
+   × order > applies discount once (80ms)
+     → expected 90 to be 81 // Object.is equality
+
+ FAIL  test/unit/order.test.ts > order > applies discount once
+AssertionError: expected 90 to be 81 // Object.is equality
+
+- Expected
++ Received
+
+- 81
++ 90
+
+ ❯ test/unit/order.test.ts:42:23
+     40|   const cart = withItems(3);
+     41|   applyDiscount(cart, 0.1);
+     42|   expect(total(cart)).toBe(81);
+       |                       ^
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 47 passed (48)
+   Duration  1.24s
