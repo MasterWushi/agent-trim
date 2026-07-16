@@ -715,14 +715,59 @@ function extractExitCode(response) {
 // Optional install-verification logging: set TRIM_LOG=/path to append one
 // line per compression. Hooks run without our shell env, so `touch
 // ~/.trim-debug` also enables it (rm to disable).
-function maybeLog(tag, stats) {
-  if (!stats) return;
+//
+// Structured metrics (opt-in, local only, never leaves the machine): set
+// TRIM_METRICS=/path or `touch ~/.trim-metrics.jsonl` and every compression
+// appends one JSON line carrying the full result contract plus a command
+// FINGERPRINT (first word + content hash — never the command text itself,
+// so secrets in arguments can't leak into the log). Summarize with
+// bin/trim-stats.js. `extra.bypass` records TRIM_OFF usage.
+function metricsPath() {
+  const fs = require('fs');
+  if (process.env.TRIM_METRICS) return process.env.TRIM_METRICS;
+  const p = require('os').homedir() + '/.trim-metrics.jsonl';
+  return fs.existsSync(p) ? p : null;
+}
+
+function maybeLog(tag, stats, meta, extra) {
   try {
     const fs = require('fs');
-    const dbg = require('os').homedir() + '/.trim-debug';
-    const path = process.env.TRIM_LOG || (fs.existsSync(dbg) ? dbg : null);
-    if (!path) return;
-    fs.appendFileSync(path, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
+    if (stats) {
+      const dbg = require('os').homedir() + '/.trim-debug';
+      const path = process.env.TRIM_LOG || (fs.existsSync(dbg) ? dbg : null);
+      if (path) fs.appendFileSync(path, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
+    }
+    const mPath = metricsPath();
+    if (mPath) {
+      const e = extra || {};
+      const rec = {
+        ts: new Date().toISOString(),
+        tag,
+        ...(meta
+          ? {
+              strategy: meta.strategy,
+              changed: meta.changed,
+              lossy: meta.lossy,
+              inBytes: meta.inputBytes,
+              outBytes: meta.outputBytes,
+              inLines: meta.inputLines,
+              outLines: meta.outputLines,
+              omittedLines: meta.omittedLines,
+              errors: meta.preservedErrors,
+              warnings: meta.preservedWarnings,
+              sidecar: !!meta.sidecarPath,
+            }
+          : stats
+            ? { inBytes: stats.inBytes, outBytes: stats.outBytes }
+            : {}),
+        ...(typeof e.command === 'string' && e.command
+          ? { cmdWord: e.command.trim().split(/\s+/, 1)[0].slice(0, 32), cmdHash: cheapHash(e.command) }
+          : {}),
+        ...(e.bypass ? { bypass: true } : {}),
+        ...(e.applied === false ? { applied: false } : {}),
+      };
+      fs.appendFileSync(mPath, JSON.stringify(rec) + '\n');
+    }
   } catch {}
 }
 

@@ -12,7 +12,10 @@ process.stdin.on('end', () => {
   try {
     if (process.env.TRIM_OFF === '1') return process.exit(0);
     const evt = JSON.parse(buf);
-    if (JSON.stringify(evt.tool_input || '').includes('TRIM_OFF=1')) return process.exit(0);
+    if (JSON.stringify(evt.tool_input || '').includes('TRIM_OFF=1')) {
+      maybeLog('codex', null, null, { bypass: true });
+      return process.exit(0);
+    }
     const r = evt.tool_response || evt.output || {};
     let original =
       typeof r === 'string'
@@ -22,13 +25,14 @@ process.stdin.on('end', () => {
     if (!original) return process.exit(0);
     const command =
       evt.tool_input && (typeof evt.tool_input === 'string' ? evt.tool_input : evt.tool_input.command);
-    const { out, stats } = compress(original, {
+    const { out, stats, meta } = compress(original, {
+      command: typeof command === 'string' ? command : undefined,
       exitCode: extractExitCode(typeof r === 'object' ? r : evt),
       isDump: isFileDump(command),
       sessionId: evt.session_id || evt.thread_id,
       hostMayTruncate: true, // shell output; the harness may cut before we see it
     });
-    maybeLog('codex', stats);
+    maybeLog('codex', stats, meta, { command: typeof command === 'string' ? command : undefined });
     if (!out || out.length >= original.length - 32) return process.exit(0);
     process.stderr.write(out);
     process.exit(2);
