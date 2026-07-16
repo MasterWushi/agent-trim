@@ -12,7 +12,7 @@ export const Trim: Plugin = async () => ({
     if (JSON.stringify(input.args ?? "").includes("TRIM_OFF=1")) return
     if (typeof output.output !== "string" || !output.output) return
     try {
-      const { out, stats } = compress(output.output)
+      const { out, stats } = compress(output.output, { hostMayTruncate: true })
       maybeLog("opencode", stats)
       // rewrite only when it actually saves space
       if (out && out.length < output.output.length - 32) output.output = out
