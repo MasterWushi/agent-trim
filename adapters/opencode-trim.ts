@@ -7,13 +7,15 @@ const require = createRequire(import.meta.url)
 const { compress, maybeLog } = require("__TRIM_ROOT__/bin/trim-core.js")
 
 export const Trim: Plugin = async () => ({
+  // NOTE: a throw from tool.execute.after is FAIL-CLOSED in opencode (the
+  // tool call errors), so the entire handler body stays inside try/catch.
   "tool.execute.after": async (input, output) => {
-    if (process.env.TRIM_OFF === "1") return
-    if (JSON.stringify(input.args ?? "").includes("TRIM_OFF=1")) {
-      try { maybeLog("opencode", null, null, { bypass: true }) } catch {}
-      return
-    }
     try {
+      if (process.env.TRIM_OFF === "1") return
+      if (JSON.stringify(input.args ?? "").includes("TRIM_OFF=1")) {
+        maybeLog("opencode", null, null, { bypass: true })
+        return
+      }
       const command = typeof (input.args as any)?.command === "string" ? (input.args as any).command : undefined
       if (typeof output.output === "string" && output.output) {
         const { out, stats, meta } = compress(output.output, { command, hostMayTruncate: true })
