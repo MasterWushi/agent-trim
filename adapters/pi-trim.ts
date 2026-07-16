@@ -15,7 +15,7 @@ export default async function (pi: ExtensionAPI) {
     const content = event.content.map((c: any) => {
       if (c.type !== "text" || typeof c.text !== "string") return c;
       try {
-        const { out, stats } = compress(c.text);
+        const { out, stats } = compress(c.text, { hostMayTruncate: true });
         maybeLog("pi", stats);
         if (out && out.length < c.text.length - 32) {
           changed = true;

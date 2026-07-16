@@ -14,9 +14,12 @@ const fs = require('fs'), os = require('os');
 for (const f of [os.homedir()+'/.claude/settings.json', os.homedir()+'/.codex/hooks.json']) {
   if (!fs.existsSync(f)) continue;
   const cfg = JSON.parse(fs.readFileSync(f,'utf8'));
-  if (cfg.hooks && cfg.hooks.PostToolUse) {
-    cfg.hooks.PostToolUse = cfg.hooks.PostToolUse.filter(h => !JSON.stringify(h).includes('/adapters/'));
-    if (!cfg.hooks.PostToolUse.length) delete cfg.hooks.PostToolUse;
+  if (cfg.hooks) {
+    for (const ev of ['PostToolUse', 'SubagentStart', 'PostCompact']) {
+      if (!cfg.hooks[ev]) continue;
+      cfg.hooks[ev] = cfg.hooks[ev].filter(h => !JSON.stringify(h).includes('/adapters/'));
+      if (!cfg.hooks[ev].length) delete cfg.hooks[ev];
+    }
     if (!Object.keys(cfg.hooks).length) delete cfg.hooks;
   }
   fs.writeFileSync(f, JSON.stringify(cfg,null,2)+'\n');
