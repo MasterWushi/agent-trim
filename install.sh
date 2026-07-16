@@ -11,7 +11,9 @@ command -v node >/dev/null || { echo "node required"; exit 1; }
 
 BK="$ROOT/backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BK"
-backup() { [[ -f "$1" ]] && cp "$1" "$BK/$(echo "$1" | tr / _)"; }
+# Always return 0: a missing file is "nothing to back up", and under set -e
+# a bare [[ -f ]] && ... failing would abort the whole install.
+backup() { if [[ -f "$1" ]]; then cp "$1" "$BK/$(echo "$1" | tr / _)"; fi; }
 
 MARK_START="<!-- trim:style:start -->"
 MARK_END="<!-- trim:style:end -->"
