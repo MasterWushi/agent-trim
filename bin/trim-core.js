@@ -765,6 +765,10 @@ function maybeLog(tag, stats, meta, extra) {
           : {}),
         ...(e.bypass ? { bypass: true } : {}),
         ...(e.applied === false ? { applied: false } : {}),
+        // Optional caller-owned block (see docs/palsync.md): embedding tools
+        // like PalSync attach their own measurements (raw bytes before their
+        // native summarization, cache hits) without trim knowing about them.
+        ...(e.palsync && typeof e.palsync === 'object' ? { palsync: e.palsync } : {}),
       };
       fs.appendFileSync(mPath, JSON.stringify(rec) + '\n');
     }

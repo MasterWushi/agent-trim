@@ -184,4 +184,26 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
 // empty input
 assert.strictEqual(compress('').out, '');
 
+// metrics passthrough: palsync block stored verbatim, command never logged raw
+{
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { maybeLog } = require('../bin/trim-core.js');
+  const mPath = path.join(os.tmpdir(), `trim-metrics-test-${process.pid}.jsonl`);
+  process.env.TRIM_METRICS = mPath;
+  const { stats, meta } = compress('x\n'.repeat(500), { noSidecar: true });
+  maybeLog('palsync', stats, meta, {
+    command: 'palsync validate --token SECRET',
+    palsync: { rawBytes: 9000, nativeBytes: 4000, cacheHit: false },
+  });
+  delete process.env.TRIM_METRICS;
+  const rec = JSON.parse(fs.readFileSync(mPath, 'utf8').trim());
+  assert.deepStrictEqual(rec.palsync, { rawBytes: 9000, nativeBytes: 4000, cacheHit: false }, 'palsync block verbatim');
+  assert.strictEqual(rec.cmdWord, 'palsync', 'only first word logged');
+  assert.ok(!JSON.stringify(rec).includes('SECRET'), 'full command text never logged');
+  assert.strictEqual(rec.strategy, 'generic');
+  fs.rmSync(mPath, { force: true });
+}
+
 console.log('core.test.js: all assertions passed');
