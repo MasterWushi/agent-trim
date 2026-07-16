@@ -166,7 +166,33 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
   const en = compress(src, { exitCode: 0, enumerate: true }).out;
   assert.ok(!en.includes('saved in full to'), 'enumerate skips sidecar');
 
+  // metadata companion: machine-readable, correct schema and counts
+  {
+    const metaFile = file.replace(/\.txt$/, '.meta.json');
+    assert.ok(fs.existsSync(metaFile), 'meta.json companion written');
+    const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    assert.strictEqual(m.schema, 'agent-trim/sidecar-meta/1');
+    assert.strictEqual(m.content, 'cleaned');
+    assert.strictEqual(m.totalLines, src.split('\n').length);
+    assert.strictEqual(m.bytes, Buffer.byteLength(src));
+    assert.ok(m.census.includes('1 error'), 'census in companion');
+    fs.rmSync(metaFile, { force: true });
+  }
+
+  // bounded retention: a stale sidecar is swept on the next write
+  {
+    const stale = path.join(SIDECAR_DIR, 'stale-test.txt');
+    fs.writeFileSync(stale, 'old');
+    const old = (Date.now() - 80 * 3600 * 1000) / 1000; // 80h > 72h TTL
+    fs.utimesSync(stale, old, old);
+    compress(src + '\nsweep trigger', { exitCode: 0, sessionId: 'sctest2' });
+    assert.ok(!fs.existsSync(stale), 'stale sidecar swept');
+    // fresh files survive the sweep
+    assert.ok(fs.existsSync(file), 'fresh sidecar kept');
+  }
+
   fs.rmSync(file, { force: true });
+  for (const n of fs.readdirSync(SIDECAR_DIR)) if (n.startsWith('sctest2-')) fs.rmSync(path.join(SIDECAR_DIR, n), { force: true });
 
   // path detection
   assert.ok(isLogPath('logs/app.log') && isLogPath('/var/x/app.log.1') && isLogPath('/srv/log/run.txt'), 'log paths');
