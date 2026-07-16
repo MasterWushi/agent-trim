@@ -166,7 +166,33 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
   const en = compress(src, { exitCode: 0, enumerate: true }).out;
   assert.ok(!en.includes('saved in full to'), 'enumerate skips sidecar');
 
+  // metadata companion: machine-readable, correct schema and counts
+  {
+    const metaFile = file.replace(/\.txt$/, '.meta.json');
+    assert.ok(fs.existsSync(metaFile), 'meta.json companion written');
+    const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    assert.strictEqual(m.schema, 'agent-trim/sidecar-meta/1');
+    assert.strictEqual(m.content, 'cleaned');
+    assert.strictEqual(m.totalLines, src.split('\n').length);
+    assert.strictEqual(m.bytes, Buffer.byteLength(src));
+    assert.ok(m.census.includes('1 error'), 'census in companion');
+    fs.rmSync(metaFile, { force: true });
+  }
+
+  // bounded retention: a stale sidecar is swept on the next write
+  {
+    const stale = path.join(SIDECAR_DIR, 'stale-test.txt');
+    fs.writeFileSync(stale, 'old');
+    const old = (Date.now() - 80 * 3600 * 1000) / 1000; // 80h > 72h TTL
+    fs.utimesSync(stale, old, old);
+    compress(src + '\nsweep trigger', { exitCode: 0, sessionId: 'sctest2' });
+    assert.ok(!fs.existsSync(stale), 'stale sidecar swept');
+    // fresh files survive the sweep
+    assert.ok(fs.existsSync(file), 'fresh sidecar kept');
+  }
+
   fs.rmSync(file, { force: true });
+  for (const n of fs.readdirSync(SIDECAR_DIR)) if (n.startsWith('sctest2-')) fs.rmSync(path.join(SIDECAR_DIR, n), { force: true });
 
   // path detection
   assert.ok(isLogPath('logs/app.log') && isLogPath('/var/x/app.log.1') && isLogPath('/srv/log/run.txt'), 'log paths');
@@ -183,5 +209,27 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
 }
 // empty input
 assert.strictEqual(compress('').out, '');
+
+// metrics passthrough: palsync block stored verbatim, command never logged raw
+{
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { maybeLog } = require('../bin/trim-core.js');
+  const mPath = path.join(os.tmpdir(), `trim-metrics-test-${process.pid}.jsonl`);
+  process.env.TRIM_METRICS = mPath;
+  const { stats, meta } = compress('x\n'.repeat(500), { noSidecar: true });
+  maybeLog('palsync', stats, meta, {
+    command: 'palsync validate --token SECRET',
+    palsync: { rawBytes: 9000, nativeBytes: 4000, cacheHit: false },
+  });
+  delete process.env.TRIM_METRICS;
+  const rec = JSON.parse(fs.readFileSync(mPath, 'utf8').trim());
+  assert.deepStrictEqual(rec.palsync, { rawBytes: 9000, nativeBytes: 4000, cacheHit: false }, 'palsync block verbatim');
+  assert.strictEqual(rec.cmdWord, 'palsync', 'only first word logged');
+  assert.ok(!JSON.stringify(rec).includes('SECRET'), 'full command text never logged');
+  assert.strictEqual(rec.strategy, 'generic');
+  fs.rmSync(mPath, { force: true });
+}
 
 console.log('core.test.js: all assertions passed');

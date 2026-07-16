@@ -1,0 +1,32 @@
+src/app.ts(10,1): error TS2322: Type 'string' is not assignable to type 'number'.
+src/lib/http.ts(13,2): error TS2339: Property 'foo' does not exist on type 'Widget'.
+src/lib/db.ts(16,3): error TS2345: Argument of type 'null' is not assignable to parameter of type 'Config'.
+src/cli.ts(19,4): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/app.ts(22,5): warning TS6133: 'unused' is declared but its value is never read.
+src/lib/http.ts(25,6): error TS2304: Cannot find name 'Bufer'.
+src/lib/db.ts(28,7): error TS2322: Type 'string' is not assignable to type 'number'.
+src/cli.ts(31,8): error TS2339: Property 'foo' does not exist on type 'Widget'.
+src/app.ts(34,9): error TS2345: Argument of type 'null' is not assignable to parameter of type 'Config'.
+src/lib/http.ts(37,1): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/lib/db.ts(40,2): warning TS6133: 'unused' is declared but its value is never read.
+src/cli.ts(43,3): error TS2304: Cannot find name 'Bufer'.
+src/app.ts(46,4): error TS2322: Type 'string' is not assignable to type 'number'.
+src/lib/http.ts(49,5): error TS2339: Property 'foo' does not exist on type 'Widget'.
+src/lib/db.ts(52,6): error TS2345: Argument of type 'null' is not assignable to parameter of type 'Config'.
+src/cli.ts(55,7): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/app.ts(58,8): warning TS6133: 'unused' is declared but its value is never read.
+src/lib/http.ts(61,9): error TS2304: Cannot find name 'Bufer'.
+src/lib/db.ts(64,1): error TS2322: Type 'string' is not assignable to type 'number'.
+src/cli.ts(67,2): error TS2339: Property 'foo' does not exist on type 'Widget'.
+src/app.ts(70,3): error TS2345: Argument of type 'null' is not assignable to parameter of type 'Config'.
+src/lib/http.ts(73,4): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/lib/db.ts(76,5): warning TS6133: 'unused' is declared but its value is never read.
+src/cli.ts(79,6): error TS2304: Cannot find name 'Bufer'.
+src/app.ts(82,7): error TS2322: Type 'string' is not assignable to type 'number'.
+src/lib/http.ts(85,8): error TS2339: Property 'foo' does not exist on type 'Widget'.
+src/lib/db.ts(88,9): error TS2345: Argument of type 'null' is not assignable to parameter of type 'Config'.
+src/cli.ts(91,1): error TS7006: Parameter 'x' implicitly has an 'any' type.
+src/app.ts(94,2): warning TS6133: 'unused' is declared but its value is never read.
+src/lib/http.ts(97,3): error TS2304: Cannot find name 'Bufer'.
+
+Found 25 errors in 4 files.

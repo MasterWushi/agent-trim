@@ -29,6 +29,8 @@ agent-trim hooks into the moment *after* a tool runs and *before* the result rea
 | 6. Sidecar huge outputs | Past ~15KB, the full cleaned text goes to a local file (`$TMPDIR/trim-sidecar/`) and a line-numbered digest takes its place in context: head, tail, every error/warning line with its real `L<n>` number and a categorical census ("2 errors, 3 warnings"), so a follow-up can read just the needed range. Shell outputs past ~28KB skip this (the harness may have already truncated them) | No — full text one read away |
 | 7. Shorten what remains | Cap by line count — **120 lines for passing output, 300 for failing output** (failure = evidence, keep more). Every error/warning line survives the cap wherever it sits; only surrounding noise is cut | Yes — clearly marked |
 
+Before the generic steps 5–7, a **structured-strategy layer** checks whether the output is a format it can compress semantically instead of line-by-line: eslint `--format json`, TypeScript compiler diagnostics, jest/vitest, pytest, `go test -v`, `git diff --stat`, and JSON-Lines logs. Detection is deliberately conservative — a miss falls through to the generic pipeline, a match keeps **every unique diagnostic, failure, assertion diff, and stack trace verbatim** and collapses only passing/routine noise (passing tests by suite, info-level log records by level, diffstat histogram bars). Measured on the committed corpus this took eslint JSON from 8.3KB to 0.6KB and a 40KB JSONL log to 2KB — cases the generic compressor couldn't touch without hiding signal (`bench/before-after.md`). `TRIM_STRATEGIES=off` disables the layer.
+
 Step 7 is failure-aware: a non-zero exit code (or error-looking text when no exit code is available) switches to the generous cap, and a plain `cat somefile` also gets the generous cap since file contents aren't "log noise". Because every error/warning line is kept *by construction*, the omission markers can make a guarantee the model can act on:
 
 ```
@@ -97,17 +99,47 @@ Environment variables on the core (defaults in parentheses):
 - `TRIM_SIDECAR=off` — keep huge outputs inline instead of moving them to a file; `TRIM_SIDECAR_MIN` (15000) sets the size threshold, `TRIM_SIDECAR_SHELL_MAX` (28000) the shell-output ceiling above which the harness's own truncation is assumed
 - Claude Code extras: `TRIM_ADAPTIVE=off`, `TRIM_NOTE=off`, `TRIM_NARRATION=off`, `TRIM_NARRATION_BUDGET` (120), `TRIM_SUBAGENT=off` — see the table above
 
+- `TRIM_STRATEGIES=off` — disable the structured-format layer (eslint/tsc/test-runners/diffstat/JSONL)
+- `TRIM_SIDECAR_TTL_HOURS` (72) — sidecar retention before best-effort sweep
+- `TRIM_METRICS=/path` — structured metrics log (see below)
+
 Per-command bypass: prefix the command with `TRIM_OFF=1`.
 
 Debugging: `touch ~/.trim-debug` and every compression appends a `tag inBytes -> outBytes` line there. `rm ~/.trim-debug` to stop.
+
+## Measuring what it saves
+
+Opt-in, local-only metrics: `touch ~/.trim-metrics.jsonl` (or set
+`TRIM_METRICS=/path`) and every compression appends one JSON line with the
+full result contract — strategy, bytes/lines in and out, lossy flag, preserved
+error/warning counts, sidecar use — plus a command *fingerprint* (first word +
+hash; the command text itself is never logged, so secrets in arguments can't
+leak). Nothing ever leaves the machine.
+
+Summarize with:
+
+```bash
+node bin/trim-stats.js          # or: npm run stats
+```
+
+which reports calls processed/changed, bytes saved, compression ratio,
+estimated tokens (clearly labeled bytes/4 **estimates** — real provider token
+counts aren't visible from a hook), breakdowns by strategy/runtime/command,
+sidecar and bypass counts, and possible re-runs after lossy trims (the
+canary that a marker failed to earn trust).
+
+`node bench/run.js` runs the committed fixture corpus (huge builds, failing
+tests, JSONL logs, adversarial prose, injection-shaped text, CRLF/unicode)
+and checks that every unique error survives; `--check` gates regressions
+against `bench/baseline.json`. Before/after numbers for the strategy layer
+are in `bench/before-after.md`.
 
 If an adapter ever fails, it fails open — the tool output passes through unmodified. Compression never blocks or breaks a tool call.
 
 ## Test
 
 ```bash
-node test/core.test.js
-node test/claude-hooks.test.js
+npm test   # core, signal detection, strategies, hooks, adapters, installer, bench gate
 ```
 
 Live check: enable the debug log, ask any agent to run `seq 1 1000`, and confirm the log shows something like `3893 -> 758`.
@@ -117,6 +149,11 @@ Live check: enable the debug log, ask any agent to run `seq 1 1000`, and confirm
 - Codex fires tool hooks for shell commands only (not MCP or file tools).
 - Step 7 can hide a line the model needed — the signal-preserving cap plus the `TRIM_OFF=1` rerun path cover that case, but it's a real tradeoff.
 - On Codex/opencode/pi.dev, compression applies to shell/tool output only, not to native file reads (their hook surfaces don't expose Read results); Claude Code gets Read compression for logs, lockfiles, and generated files.
-- In Claude Code, a Bash call that exits non-zero may route through a different hook event (`PostToolUseFailure`) that this adapter doesn't watch — failing output there passes through untouched, which is the safe direction (failures keep everything).
+- In Claude Code, a Bash call that exits non-zero may route through a different hook event (`PostToolUseFailure`) that this adapter doesn't watch — failing output there passes through untouched, which is the safe direction (failures keep everything). Claude Code's Bash hook payload carries no exit code at all (`{stdout, stderr, interrupted, isImage}`), so failure detection relies on `interrupted` plus text sniffing.
+- Codex CLI hooks can only *replace the whole result with feedback text* (exit 2 + stderr) — structured field-by-field rewriting isn't supported by the runtime yet.
+- opencode and pi truncate output *before* the hook sees it (pi: 50KB/2,000 lines); trim compresses what remains.
+- Estimated token figures are byte-based approximations, never provider-billed counts.
+
+Design rationale and sources: `docs/research.md` (provider caching facts, paper findings), `docs/decisions.md` (rejected proposals and why), `docs/palsync.md` (optional interop contract for embedding tools).
 
 MIT licensed.

@@ -1,0 +1,94 @@
+=== RUN   TestHandler0
+--- PASS: TestHandler0 (0.00s)
+=== RUN   TestHandler1
+--- PASS: TestHandler1 (0.01s)
+=== RUN   TestHandler2
+--- PASS: TestHandler2 (0.02s)
+=== RUN   TestHandler3
+--- PASS: TestHandler3 (0.03s)
+=== RUN   TestHandler4
+--- PASS: TestHandler4 (0.04s)
+=== RUN   TestHandler5
+--- PASS: TestHandler5 (0.05s)
+=== RUN   TestHandler6
+--- PASS: TestHandler6 (0.06s)
+=== RUN   TestHandler7
+--- PASS: TestHandler7 (0.07s)
+=== RUN   TestHandler8
+--- PASS: TestHandler8 (0.08s)
+=== RUN   TestHandler9
+--- PASS: TestHandler9 (0.00s)
+=== RUN   TestHandler10
+--- PASS: TestHandler10 (0.01s)
+=== RUN   TestHandler11
+--- PASS: TestHandler11 (0.02s)
+=== RUN   TestHandler12
+--- PASS: TestHandler12 (0.03s)
+=== RUN   TestHandler13
+--- PASS: TestHandler13 (0.04s)
+=== RUN   TestHandler14
+--- PASS: TestHandler14 (0.05s)
+=== RUN   TestHandler15
+--- PASS: TestHandler15 (0.06s)
+=== RUN   TestHandler16
+--- PASS: TestHandler16 (0.07s)
+=== RUN   TestHandler17
+--- PASS: TestHandler17 (0.08s)
+=== RUN   TestHandler18
+--- PASS: TestHandler18 (0.00s)
+=== RUN   TestHandler19
+--- PASS: TestHandler19 (0.01s)
+=== RUN   TestHandler20
+--- PASS: TestHandler20 (0.02s)
+=== RUN   TestHandler21
+--- PASS: TestHandler21 (0.03s)
+=== RUN   TestHandler22
+--- PASS: TestHandler22 (0.04s)
+=== RUN   TestHandler23
+--- PASS: TestHandler23 (0.05s)
+=== RUN   TestHandler24
+--- PASS: TestHandler24 (0.06s)
+=== RUN   TestHandler25
+--- PASS: TestHandler25 (0.07s)
+=== RUN   TestHandler26
+--- PASS: TestHandler26 (0.08s)
+=== RUN   TestHandler27
+--- PASS: TestHandler27 (0.00s)
+=== RUN   TestHandler28
+--- PASS: TestHandler28 (0.01s)
+=== RUN   TestHandler29
+--- PASS: TestHandler29 (0.02s)
+=== RUN   TestHandler30
+--- PASS: TestHandler30 (0.03s)
+=== RUN   TestHandler31
+--- PASS: TestHandler31 (0.04s)
+=== RUN   TestHandler32
+--- PASS: TestHandler32 (0.05s)
+=== RUN   TestHandler33
+--- PASS: TestHandler33 (0.06s)
+=== RUN   TestHandler34
+--- PASS: TestHandler34 (0.07s)
+=== RUN   TestHandler35
+--- PASS: TestHandler35 (0.08s)
+=== RUN   TestHandler36
+--- PASS: TestHandler36 (0.00s)
+=== RUN   TestHandler37
+--- PASS: TestHandler37 (0.01s)
+=== RUN   TestHandler38
+--- PASS: TestHandler38 (0.02s)
+=== RUN   TestHandler39
+--- PASS: TestHandler39 (0.03s)
+=== RUN   TestRace
+    race_test.go:31: got 3 writers, want 1
+--- FAIL: TestRace (0.04s)
+=== RUN   TestPanic
+--- FAIL: TestPanic (0.00s)
+panic: runtime error: index out of range [3] with length 2 [recovered]
+	panic: runtime error: index out of range [3] with length 2
+
+goroutine 18 [running]:
+example.com/pkg.mangle(...)
+	/repo/pkg/mangle.go:17
+FAIL
+FAIL	example.com/pkg	0.612s
+ok  	example.com/other	0.201s

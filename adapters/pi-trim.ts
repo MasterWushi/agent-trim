@@ -10,13 +10,17 @@ export default async function (pi: ExtensionAPI) {
   pi.on("tool_result", async (event) => {
     if (process.env.TRIM_OFF === "1") return;
     if (event.toolName !== "bash" || event.isError) return;
-    if (JSON.stringify(event.input ?? "").includes("TRIM_OFF=1")) return;
+    if (JSON.stringify(event.input ?? "").includes("TRIM_OFF=1")) {
+      try { maybeLog("pi", null, null, { bypass: true }); } catch {}
+      return;
+    }
+    const command = typeof (event.input as any)?.command === "string" ? (event.input as any).command : undefined;
     let changed = false;
     const content = event.content.map((c: any) => {
       if (c.type !== "text" || typeof c.text !== "string") return c;
       try {
-        const { out, stats } = compress(c.text, { hostMayTruncate: true });
-        maybeLog("pi", stats);
+        const { out, stats, meta } = compress(c.text, { command, hostMayTruncate: true });
+        maybeLog("pi", stats, meta, { command });
         if (out && out.length < c.text.length - 32) {
           changed = true;
           return { ...c, text: out };

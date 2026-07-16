@@ -66,7 +66,10 @@ process.stdin.on('end', () => {
     const evt = JSON.parse(buf);
     const command = evt.tool_input && evt.tool_input.command;
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
-    if (String(command).includes('TRIM_OFF=1')) return process.exit(0);
+    if (String(command).includes('TRIM_OFF=1')) {
+      maybeLog('claude', null, null, { command: String(command), bypass: true });
+      return process.exit(0);
+    }
 
     const promptText = lastUserPromptText(evt.transcript_path);
     let scale = 1;
@@ -78,8 +81,14 @@ process.stdin.on('end', () => {
       }
     }
     const r = evt.tool_response;
+    // Claude Code's Bash tool_response carries no exit code ({stdout, stderr,
+    // interrupted, isImage} per the hooks doc) — extractExitCode covers other
+    // shapes, `interrupted` marks a killed/timed-out run as a failure, and
+    // otherwise failure is sniffed from the text.
+    const exitCode = r && typeof r === 'object' && r.interrupted === true ? 1 : extractExitCode(r);
     const opts = {
-      exitCode: extractExitCode(r),
+      command: typeof command === 'string' ? command : undefined,
+      exitCode,
       isDump: isFileDump(command),
       enumerate: requestsEnumeration(promptText),
       relevanceTokens: extractRelevanceTokens(promptText),
@@ -101,14 +110,14 @@ process.stdin.on('end', () => {
       if (!file || typeof file.content !== 'string') return process.exit(0);
       const sideRead = isSidecarPath(filePath);
       if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return process.exit(0);
-      const { out } = compress(file.content, {
+      const { out, meta } = compress(file.content, {
         ...opts,
         isDump: true, // treat like failures: keep more, signal-anchored
         hostMayTruncate: undefined, // Read arrives complete
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
       if (out === file.content || out.length >= file.content.length - 32) return process.exit(0);
-      maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) });
+      maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, { command: filePath });
       const hookSpecificOutput = {
         hookEventName: 'PostToolUse',
         updatedToolOutput: { ...r, file: { ...file, content: out, numLines: out.split('\n').length } },
@@ -123,14 +132,16 @@ process.stdin.on('end', () => {
     let updated;
     let inBytes = 0;
     let outBytes = 0;
+    let bestMeta = null; // contract of the dominant field, for telemetry
     if (r && typeof r === 'object' && (r.stdout !== undefined || r.stderr !== undefined || r.output !== undefined)) {
       const next = { ...r };
       let changed = false;
       for (const field of ['stdout', 'stderr', 'output']) {
         if (typeof next[field] !== 'string' || !next[field]) continue;
         inBytes += Buffer.byteLength(next[field]);
-        const { out } = compress(next[field], opts);
+        const { out, meta } = compress(next[field], opts);
         outBytes += Buffer.byteLength(out);
+        if (!bestMeta || (meta && meta.inputBytes > bestMeta.inputBytes)) bestMeta = meta;
         if (out !== next[field]) {
           next[field] = out;
           changed = true;
@@ -141,14 +152,15 @@ process.stdin.on('end', () => {
       const original = typeof r === 'string' ? r : typeof evt.tool_output === 'string' ? evt.tool_output : undefined;
       if (original === undefined) return process.exit(0); // nothing we understand — leave untouched
       inBytes = Buffer.byteLength(original);
-      const { out } = compress(original, opts);
+      const { out, meta } = compress(original, opts);
       outBytes = Buffer.byteLength(out);
+      bestMeta = meta;
       if (out !== original) updated = out;
     }
 
     // Only rewrite when it actually saves space; small outputs pass through.
     if (updated === undefined || outBytes >= inBytes - 32) return process.exit(0);
-    maybeLog('claude', { inBytes, outBytes });
+    maybeLog('claude', { inBytes, outBytes }, bestMeta, { command: opts.command });
     const hookSpecificOutput = {
       hookEventName: 'PostToolUse',
       updatedToolOutput: updated,

@@ -19,11 +19,32 @@ const TEMPLATE_MIN_RUN = int(process.env.TRIM_TEMPLATE_MIN_RUN, 5);
 // the cap regardless of position. Deliberately broad: over-matching keeps a few
 // extra lines, never fewer. The trailing \w*(?:Error|Warning)\b catches compound
 // runtime names (TypeError, ReferenceError) that \bERROR\b misses.
+// Pattern groups, in plain terms:
+//  - classic keywords incl. plurals ("2 errors", "3 warnings" summary lines)
+//  - compound runtime names (TypeError, DeprecationWarning, IOException)
+//  - assertion vocabulary (assert/expected/received/actual — Jest/pytest
+//    diff blocks have no "error" on the diff lines themselves)
+//  - process-death vocabulary (segfault, core dumped, killed, OOM,
+//    non-zero exit) — compilers and shells report failure without "error"
+//  - test-runner glyph prefixes (✗ ✘ × ✖ ❯) and TAP "not ok"
+//  - pytest "E   <detail>" continuation lines
 const SIGNAL_RE = new RegExp(
   process.env.TRIM_KEEP_RE ||
-    '\\b(err(or)?|warn(ing)?|fail(ed|ure)?|exception|traceback|panic|fatal|denied|refused|timeout|timed out|not found|cannot|unable|deprecated|critical)\\b|\\w*(?:Error|Warning)\\b',
+    '\\b(err(or)?s?|warn(ing)?s?|fail(s|ed|ing|ure|ures)?|exception|traceback|panic|fatal|denied|refused|' +
+      'timeout|timed out|not found|cannot|unable|deprecated|critical|assert(ion)?|expected|received|actual|' +
+      'missing|unresolved|undefined reference|segfault|segmentation fault|core dumped|killed|aborted|' +
+      'out of memory|stack overflow|unhandled|uncaught|non-zero exit|exit code [1-9][0-9]*)\\b|' +
+      '^\\s*(?:✗|✘|×|✖|❯)|\\bnot ok\\b|^E\\s{2,}\\S',
   'i'
 );
+// Compound runtime names (TypeError, DeprecationWarning, IOException) need
+// their CamelCase intact — under /i, \w*Error\b would match "Terror". Kept
+// case-sensitive in a second pattern; isSignal() is the one true test.
+const COMPOUND_RE = /\w*(?:Error|Warning|Exception)\b/;
+
+function isSignal(line) {
+  return SIGNAL_RE.test(line) || COMPOUND_RE.test(line);
+}
 
 // Failure sniff for when no exit code is available. False positives only make
 // the cap more generous — safe direction.
@@ -94,7 +115,7 @@ function shareTemplate(aTokens, bTokens) {
   return same / aTokens.length >= 0.5 && anchors >= 2;
 }
 
-function collapseTemplates(lines) {
+function collapseTemplates(lines, counter) {
   if (process.env.TRIM_TEMPLATE === 'off') return lines;
   const out = [];
   let runStart = -1;
@@ -105,6 +126,7 @@ function collapseTemplates(lines) {
     if (runLen >= TEMPLATE_MIN_RUN) {
       out.push(lines[runStart]);
       out.push(`[trim hook: ${runLen - 1} similar lines collapsed (same shape, varying values)]`);
+      if (counter) counter.collapsed = (counter.collapsed || 0) + runLen - 1;
     } else {
       for (let i = runStart; i < runStart + runLen; i++) out.push(lines[i]);
     }
@@ -115,7 +137,7 @@ function collapseTemplates(lines) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (SIGNAL_RE.test(line)) {
+    if (isSignal(line)) {
       if (runLen > 0) flushRun();
       out.push(line);
       continue;
@@ -238,10 +260,10 @@ const OTHER_SIGNAL_CAP = 15; // max line numbers listed in the "not shown" line
 // completeness task; a categorical census ("2 errors, 3 warnings") lets it
 // answer without re-reading (hush measured this against live models).
 const CENSUS_CATEGORIES = [
-  { singular: 'error', plural: 'errors', re: /\w*Error\b|\berr(or)?\b/i },
-  { singular: 'failure', plural: 'failures', re: /\bfail(ed|ure)?s?\b/i },
+  { singular: 'error', plural: 'errors', re: /\w*(?:Error|Exception)\b|\berr(or)?s?\b|\bpanic\b|\btraceback\b|\bfatal\b/i },
+  { singular: 'failure', plural: 'failures', re: /\bfail(s|ed|ing|ure|ures)?\b|^\s*[✗✘×✖]|\bnot ok\b/i },
   { singular: 'critical', plural: 'criticals', re: /\bcritical\b/i },
-  { singular: 'warning', plural: 'warnings', re: /\w*Warning\b|\bwarn(ing)?\b/i },
+  { singular: 'warning', plural: 'warnings', re: /\w*Warning\b|\bwarn(ing)?s?\b/i },
   { singular: 'deprecation', plural: 'deprecations', re: /\bdeprecated\b/i },
 ];
 
@@ -273,7 +295,7 @@ function buildSidecarDigest(cleaned, relevanceTokens) {
   const total = lines.length;
   const signalIdx = [];
   lines.forEach((l, i) => {
-    if (SIGNAL_RE.test(l)) signalIdx.push(i);
+    if (isSignal(l)) signalIdx.push(i);
   });
 
   // Signal (and prompt-named) lines lead the digest, ahead of the structural
@@ -319,6 +341,66 @@ function buildSidecarDigest(cleaned, relevanceTokens) {
   return { body: out.join('\n'), total, census };
 }
 
+// Bounded retention: sidecars live in tmpdir and the OS eventually clears
+// them, but Linux tmp cleaning can be days away. On each write, best-effort
+// delete sidecar files older than TRIM_SIDECAR_TTL_HOURS (default 72h).
+// Scan is capped so a pathological directory can't slow a hook down.
+const SIDECAR_TTL_MS = int(process.env.TRIM_SIDECAR_TTL_HOURS, 72) * 3600 * 1000;
+const SIDECAR_SWEEP_MAX = 200;
+
+function sweepSidecars(fs, path, now) {
+  try {
+    const names = fs.readdirSync(SIDECAR_DIR).slice(0, SIDECAR_SWEEP_MAX);
+    for (const n of names) {
+      const p = path.join(SIDECAR_DIR, n);
+      try {
+        if (now - fs.statSync(p).mtimeMs > SIDECAR_TTL_MS) fs.unlinkSync(p);
+      } catch {
+        /* raced or unreadable — skip */
+      }
+    }
+  } catch {
+    /* directory missing or unreadable — nothing to sweep */
+  }
+}
+
+// Content-addressed sidecar write: full cleaned text plus a .meta.json
+// companion (machine-readable, for tooling like PalSync — never shown to the
+// model). Idempotent per content. Returns the file path, or null on any
+// filesystem trouble (callers fall back to inline capping).
+function writeSidecarFile(cleaned, sessionId, census) {
+  if (process.env.TRIM_SIDECAR === 'off') return null;
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const name = (sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '') + `${cheapHash(cleaned)}.txt`;
+    const file = path.join(SIDECAR_DIR, name);
+    fs.mkdirSync(SIDECAR_DIR, { recursive: true });
+    sweepSidecars(fs, path, Date.now());
+    const { safeWriteFileSync } = require('./lib/safe-write');
+    if (!fs.existsSync(file)) {
+      safeWriteFileSync(file, cleaned);
+      safeWriteFileSync(
+        file.replace(/\.txt$/, '.meta.json'),
+        JSON.stringify({
+          schema: 'agent-trim/sidecar-meta/1',
+          content: 'cleaned', // lossless-cleaned text, NOT original raw bytes
+          totalLines: cleaned.split('\n').length,
+          bytes: Buffer.byteLength(cleaned),
+          census: census || '',
+          sessionId: sessionId || null,
+          createdAt: new Date().toISOString(),
+        }) + '\n'
+      );
+    }
+    return file;
+  } catch {
+    return null;
+  }
+}
+
+// Digest-view sidecar for very large generic outputs. Returns { out, file }
+// or null when the sidecar path doesn't apply.
 function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
   if (process.env.TRIM_SIDECAR === 'off') return null;
   if (typeof cleaned !== 'string' || cleaned.length < SIDECAR_MIN_CHARS) return null;
@@ -326,7 +408,6 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
   // by the harness (see SIDECAR_SHELL_MAX): step aside to the inline cap.
   if (hostMayTruncate && cleaned.length >= SIDECAR_SHELL_MAX) return null;
   try {
-    const fs = require('fs');
     const path = require('path');
     const name = (sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '') + `${cheapHash(cleaned)}.txt`;
     const file = path.join(SIDECAR_DIR, name);
@@ -342,9 +423,9 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
     // nothing to cut — it would reproduce the input plus header overhead.
     // Bail before touching disk; the inline cap is a no-op there too.
     if (out.length >= cleaned.length) return null;
-    fs.mkdirSync(SIDECAR_DIR, { recursive: true });
-    if (!fs.existsSync(file)) require('./lib/safe-write').safeWriteFileSync(file, cleaned);
-    return out;
+    const written = writeSidecarFile(cleaned, sessionId, d.census);
+    if (!written) return null;
+    return { out, file: written };
   } catch {
     return null; // fall back to the normal capped view
   }
@@ -400,13 +481,18 @@ function omittedMarker(n) {
 
 // Keep every signal line (and every prompt-named line) wherever it sits, then
 // spend the remaining budget 60/40 on head/tail. Gaps get in-place markers.
-function capLines(lines, cap, relevanceTokens) {
+// `counter`, when given, accumulates how many real lines were dropped.
+function capLines(lines, cap, relevanceTokens, counter) {
   if (lines.length <= cap) return lines;
   const kept = new Set();
   lines.forEach((line, i) => {
-    if (SIGNAL_RE.test(line)) kept.add(i);
+    if (isSignal(line)) kept.add(i);
   });
   for (const i of relevanceHits(lines, relevanceTokens)) kept.add(i);
+  // Mostly-signal output (error dumps, adversarial prose full of the word
+  // "error"): cutting the few non-signal lines saves almost nothing and the
+  // markers can even GROW the result while dropping the tail. Keep it whole.
+  if (kept.size >= lines.length * 0.9) return lines;
   const budget = Math.max(0, cap - kept.size);
   const head = Math.ceil(budget * 0.6);
   const tail = budget - head;
@@ -416,14 +502,56 @@ function capLines(lines, cap, relevanceTokens) {
   const sortedKept = [...kept].sort((a, b) => a - b);
   const out = [];
   let last = -1;
+  let omitted = 0;
   for (const i of sortedKept) {
-    if (i - last > 1) out.push(omittedMarker(i - last - 1));
+    if (i - last > 1) {
+      out.push(omittedMarker(i - last - 1));
+      omitted += i - last - 1;
+    }
     out.push(lines[i]);
     last = i;
   }
-  if (lines.length - 1 - last > 0) out.push(omittedMarker(lines.length - 1 - last));
+  if (lines.length - 1 - last > 0) {
+    out.push(omittedMarker(lines.length - 1 - last));
+    omitted += lines.length - 1 - last;
+  }
   out.push('[trim hook: output shortened; rerun with TRIM_OFF=1 prefix for the full version]');
+  if (counter) counter.omitted = (counter.omitted || 0) + omitted;
   return out;
+}
+
+// ---- structured-format strategies ----
+// Semantic compressors for recognizable machine formats (test runners,
+// eslint --format json, diffstat, JSONL logs, ...). Live in bin/strategies/;
+// each does its own conservative detection. Any throw — including a missing
+// strategies directory — falls back to the generic pipeline. TRIM_STRATEGIES=off
+// disables the whole layer.
+function applyStrategies(cleaned, opts) {
+  if (process.env.TRIM_STRATEGIES === 'off') return null;
+  try {
+    return require('./strategies')(cleaned, {
+      command: opts.command,
+      exitCode: opts.exitCode,
+      isSignal,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Signal counts over an output view, for the result contract. Marker lines
+// the hook itself added are excluded so counts describe the tool's output.
+function countSignals(text) {
+  let errors = 0;
+  let warnings = 0;
+  for (const l of text.split('\n')) {
+    if (l.includes('[trim hook:')) continue;
+    if (!isSignal(l)) continue;
+    const cat = CENSUS_CATEGORIES.findIndex((c) => c.re.test(l));
+    if (cat >= 0 && cat <= 2) errors++; // error / failure / critical
+    else if (cat > 2) warnings++; // warning / deprecation
+  }
+  return { errors, warnings };
 }
 
 // opts (all optional):
@@ -436,8 +564,32 @@ function capLines(lines, cap, relevanceTokens) {
 //   hostMayTruncate?: boolean  — shell output the harness may have already cut
 //   noSidecar?: boolean        — cap inline, never write a sidecar (e.g. when
 //                                the input IS a sidecar file being re-read)
+//   command?: string           — the shell command, for strategy detection
+//
+// Returns { out, stats, meta }:
+//   stats — { inBytes, outBytes } (legacy shape, kept for compatibility)
+//   meta  — the full trimming result contract (see buildMeta); internal
+//           metadata for adapters/telemetry, never shown to the model.
+function buildMeta(text, out, o, extra) {
+  const kept = countSignals(out);
+  return {
+    changed: out !== text,
+    strategy: extra.strategy,
+    inputBytes: Buffer.byteLength(text),
+    outputBytes: Buffer.byteLength(out),
+    inputLines: extra.inputLines,
+    outputLines: out.split('\n').length,
+    lossy: !!extra.lossy,
+    preservedErrors: kept.errors,
+    preservedWarnings: kept.warnings,
+    omittedLines: extra.omittedLines || 0,
+    sidecarPath: extra.sidecarPath || null,
+    reason: extra.reason,
+  };
+}
+
 function compress(text, opts) {
-  if (!text) return { out: text, stats: null };
+  if (!text) return { out: text, stats: null, meta: null };
   const o = opts || {};
   const inBytes = Buffer.byteLength(text);
 
@@ -450,12 +602,58 @@ function compress(text, opts) {
   s = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[ \t]+$/gm, '');
   // 4. collapse 2+ blank lines to one
   s = s.replace(/\n{3,}/g, '\n\n');
+  const inputLines = s.split('\n').length;
+  const done = (out, extra) => ({
+    out,
+    stats: { inBytes, outBytes: Buffer.byteLength(out) },
+    meta: buildMeta(text, out, o, { inputLines, ...extra }),
+  });
+
+  // 4.4 structured-format strategies: when the cleaned text is recognizably a
+  // known machine format (test runner, eslint --format json, diffstat, ...),
+  // semantic compression beats generic line capping. Detection is
+  // conservative; any miss or throw falls through to the generic path.
+  // Enumeration prompts skip strategies too — their point is nothing elided.
+  if (!o.enumerate) {
+    const strat = applyStrategies(s, o);
+    if (strat !== null) {
+      // Lossy strategy output over the sidecar threshold still gets a full
+      // recoverable copy on disk, pointer appended to the rendered view.
+      let sidecarPath = null;
+      let out = strat.out;
+      if (strat.lossy && !o.noSidecar && s.length >= SIDECAR_MIN_CHARS && !(o.hostMayTruncate && s.length >= SIDECAR_SHELL_MAX)) {
+        const side = writeSidecarFile(s, o.sessionId);
+        if (side) {
+          sidecarPath = side;
+          out += `\n[trim hook: full ${inputLines}-line output saved to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`;
+        }
+      }
+      if (out.length < s.length) {
+        return done(out, {
+          strategy: strat.strategy,
+          lossy: strat.lossy,
+          omittedLines: strat.omittedLines || 0,
+          sidecarPath,
+          reason: strat.reason,
+        });
+      }
+      // strategy didn't actually shrink it — fall through to generic
+    }
+  }
 
   // 4.5 very large outputs: full text to a sidecar file, digest in its place.
   // The enumeration carve-out is exempt — its whole point is nothing elided.
   if (!o.enumerate && !o.noSidecar) {
     const side = maybeSidecar(s, o.relevanceTokens, o.sessionId, o.hostMayTruncate);
-    if (side !== null) return { out: side, stats: { inBytes, outBytes: Buffer.byteLength(side) } };
+    if (side !== null) {
+      return done(side.out, {
+        strategy: 'sidecar',
+        lossy: true,
+        omittedLines: Math.max(0, inputLines - side.out.split('\n').length),
+        sidecarPath: side.file,
+        reason: 'very large output moved to sidecar file, digest kept inline',
+      });
+    }
   }
 
   // 5. consecutive duplicate lines -> single line with repeat count
@@ -475,7 +673,8 @@ function compress(text, opts) {
 
   // 6. collapse runs of same-shaped log lines — skipped for enumeration
   // requests, where collapsing would remove the very items asked for
-  if (!o.enumerate) lines = collapseTemplates(lines);
+  const counter = { omitted: 0, collapsed: 0 };
+  if (!o.enumerate) lines = collapseTemplates(lines, counter);
 
   // 7. size cap: failing output (or a file dump) is evidence — keep ~2.5x
   // more; enumeration requests get an effectively uncapped view
@@ -485,10 +684,21 @@ function compress(text, opts) {
     : o.isDump || looksLikeFailure(s, o.exitCode)
       ? Math.max(FLOOR_FAIL, Math.round(CAP_FAIL * scale))
       : Math.max(FLOOR_PASS, Math.round(CAP_PASS * scale));
-  lines = capLines(lines, cap, o.relevanceTokens);
+  lines = capLines(lines, cap, o.relevanceTokens, counter);
 
   const out = lines.join('\n');
-  return { out, stats: { inBytes, outBytes: Buffer.byteLength(out) } };
+  const lossy = counter.omitted > 0 || counter.collapsed > 0;
+  return done(out, {
+    strategy: 'generic',
+    lossy,
+    omittedLines: counter.omitted + counter.collapsed,
+    sidecarPath: null,
+    reason: lossy
+      ? counter.omitted > 0
+        ? 'capped repetitive output, all signal lines kept'
+        : 'same-shaped log runs collapsed, counts kept'
+      : 'lossless cleanup only',
+  });
 }
 
 // Pull an exit code out of a structured tool response, when the agent
@@ -505,19 +715,71 @@ function extractExitCode(response) {
 // Optional install-verification logging: set TRIM_LOG=/path to append one
 // line per compression. Hooks run without our shell env, so `touch
 // ~/.trim-debug` also enables it (rm to disable).
-function maybeLog(tag, stats) {
-  if (!stats) return;
+//
+// Structured metrics (opt-in, local only, never leaves the machine): set
+// TRIM_METRICS=/path or `touch ~/.trim-metrics.jsonl` and every compression
+// appends one JSON line carrying the full result contract plus a command
+// FINGERPRINT (first word + content hash — never the command text itself,
+// so secrets in arguments can't leak into the log). Summarize with
+// bin/trim-stats.js. `extra.bypass` records TRIM_OFF usage.
+function metricsPath() {
+  const fs = require('fs');
+  if (process.env.TRIM_METRICS) return process.env.TRIM_METRICS;
+  const p = require('os').homedir() + '/.trim-metrics.jsonl';
+  return fs.existsSync(p) ? p : null;
+}
+
+function maybeLog(tag, stats, meta, extra) {
   try {
     const fs = require('fs');
-    const dbg = require('os').homedir() + '/.trim-debug';
-    const path = process.env.TRIM_LOG || (fs.existsSync(dbg) ? dbg : null);
-    if (!path) return;
-    fs.appendFileSync(path, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
+    if (stats) {
+      const dbg = require('os').homedir() + '/.trim-debug';
+      const path = process.env.TRIM_LOG || (fs.existsSync(dbg) ? dbg : null);
+      if (path) fs.appendFileSync(path, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
+    }
+    const mPath = metricsPath();
+    if (mPath) {
+      const e = extra || {};
+      const rec = {
+        ts: new Date().toISOString(),
+        tag,
+        ...(meta
+          ? {
+              strategy: meta.strategy,
+              changed: meta.changed,
+              lossy: meta.lossy,
+              inBytes: meta.inputBytes,
+              outBytes: meta.outputBytes,
+              inLines: meta.inputLines,
+              outLines: meta.outputLines,
+              omittedLines: meta.omittedLines,
+              errors: meta.preservedErrors,
+              warnings: meta.preservedWarnings,
+              sidecar: !!meta.sidecarPath,
+            }
+          : stats
+            ? { inBytes: stats.inBytes, outBytes: stats.outBytes }
+            : {}),
+        ...(typeof e.command === 'string' && e.command
+          ? { cmdWord: e.command.trim().split(/\s+/, 1)[0].slice(0, 32), cmdHash: cheapHash(e.command) }
+          : {}),
+        ...(e.bypass ? { bypass: true } : {}),
+        ...(e.applied === false ? { applied: false } : {}),
+        // Optional caller-owned block (see docs/palsync.md): embedding tools
+        // like PalSync attach their own measurements (raw bytes before their
+        // native summarization, cache hits) without trim knowing about them.
+        ...(e.palsync && typeof e.palsync === 'object' ? { palsync: e.palsync } : {}),
+      };
+      fs.appendFileSync(mPath, JSON.stringify(rec) + '\n');
+    }
   } catch {}
 }
 
 module.exports = {
   compress,
+  countSignals,
+  isSignal,
+  writeSidecarFile,
   maybeLog,
   extractExitCode,
   isFileDump,

@@ -1,0 +1,90 @@
+PASS src/__tests__/mod0.test.js
+  mod0
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+PASS src/__tests__/mod1.test.js
+  mod1
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+PASS src/__tests__/mod2.test.js
+  mod2
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+PASS src/__tests__/mod3.test.js
+  mod3
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+PASS src/__tests__/mod4.test.js
+  mod4
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+PASS src/__tests__/mod5.test.js
+  mod5
+    ✓ behaves correctly in scenario 0 (2 ms)
+    ✓ behaves correctly in scenario 1 (3 ms)
+    ✓ behaves correctly in scenario 2 (4 ms)
+    ✓ behaves correctly in scenario 3 (5 ms)
+    ✓ behaves correctly in scenario 4 (6 ms)
+    ✓ behaves correctly in scenario 5 (7 ms)
+    ✓ behaves correctly in scenario 6 (8 ms)
+    ✓ behaves correctly in scenario 7 (2 ms)
+    ✓ behaves correctly in scenario 8 (3 ms)
+    ✓ behaves correctly in scenario 9 (4 ms)
+    ✓ behaves correctly in scenario 10 (5 ms)
+    ✓ behaves correctly in scenario 11 (6 ms)
+
+Test Suites: 6 passed, 6 total
+Tests:       72 passed, 72 total
+Snapshots:   0 total
+Time:        4.821 s
+Ran all test suites.
