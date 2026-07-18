@@ -80,6 +80,7 @@ const summary = {
   sidecars: processed.filter((r) => r.sidecar).length,
   strategyDetections: processed.filter((r) => r.strategy && r.strategy !== 'generic').length,
   possibleRepeatCommands: repeats.length,
+  exactDuplicates: processed.filter((r) => r.dupExact).length,
   byStrategy: Object.fromEntries(groupBy(processed, 'strategy').map(([k, g]) => [k, { calls: g.n, inBytes: g.in, outBytes: g.out }])),
   byRuntime: Object.fromEntries(groupBy(processed, 'tag').map(([k, g]) => [k, { calls: g.n, inBytes: g.in, outBytes: g.out }])),
   byCommand: Object.fromEntries(groupBy(processed.filter((r) => r.cmdWord), 'cmdWord').slice(0, 15).map(([k, g]) => [k, { calls: g.n, inBytes: g.in, outBytes: g.out }])),
@@ -101,6 +102,7 @@ console.log(`  bytes:             ${num(inBytes)} -> ${num(outBytes)} (saved ${n
 console.log(`  est. tokens saved: ~${num(summary.estTokensSavedPerSend)} per send (bytes/4 ESTIMATE, recurs each turn)`);
 console.log(`  lossy/lossless:    ${num(summary.lossy)} lossy, ${num(summary.lossless)} lossless-only`);
 console.log(`  sidecars written:  ${num(summary.sidecars)}   structured detections: ${num(summary.strategyDetections)}`);
+console.log(`  exact duplicates:  ${num(summary.exactDuplicates)} (metrics-only; output unchanged)`);
 if (summary.possibleRepeatCommands) console.log(`  ⚠ possible re-runs after lossy trims: ${num(summary.possibleRepeatCommands)} (same command within 5 min)`);
 const table = (title, obj) => {
   const keys = Object.keys(obj);

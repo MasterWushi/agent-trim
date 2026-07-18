@@ -6,6 +6,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { compress } = require('../bin/trim-core.js');
+const applyStrategies = require('../bin/strategies');
 
 const fx = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 const run = (name, opts) => compress(fx(name), { noSidecar: true, ...opts });
@@ -174,6 +175,48 @@ const run = (name, opts) => compress(fx(name), { noSidecar: true, ...opts });
   const { out } = run('unicode-crlf.txt', { exitCode: 0 });
   assert.ok(out.includes('エラー: ファイルが見つかりません'), 'unicode signal line kept');
   assert.ok(!out.includes('\r'), 'CRLF normalized');
+}
+
+// ---- npm audit JSON ----
+{
+  const { out, meta } = run('npm-audit.json', { exitCode: 1, command: 'npm audit --json' });
+  assert.strictEqual(meta.strategy, 'npm-audit');
+  assert.ok(out.includes('critical 1') && out.includes('critical gamma') && out.includes('prototype pollution'));
+}
+// array-valued vulnerabilities from another scanner must not be claimed
+{
+  const trivy = JSON.stringify({
+    vulnerabilities: [
+      { id: 'CVE-2024-1234', severity: 'HIGH', pkg: 'openssl', desc: 'x'.repeat(300) },
+      { id: 'CVE-2024-9999', severity: 'CRITICAL', pkg: 'zlib', desc: 'y'.repeat(300) },
+    ],
+  });
+  assert.strictEqual(applyStrategies(trivy, { command: 'cat trivy-report.json' }), null);
+  assert.strictEqual(compress(trivy, { command: 'cat trivy-report.json', noSidecar: true }).out, trivy);
+}
+// command-independent recognition still handles a real npm audit payload
+{
+  const oneLine = JSON.stringify(JSON.parse(fx('npm-audit.json')));
+  const npm = compress(oneLine, { command: 'npm audit --json', noSidecar: true });
+  const make = compress(oneLine, { command: 'make audit', noSidecar: true });
+  assert.strictEqual(npm.meta.strategy, 'npm-audit');
+  assert.strictEqual(make.meta.strategy, 'npm-audit');
+  assert.strictEqual(make.out, npm.out);
+}
+
+// ---- generic diagnostic blocks keep frames whole and fold exact repeats ----
+{
+  const { out, meta } = run('rustc-diagnostics.txt', { exitCode: 1, command: 'cargo check' });
+  assert.strictEqual(meta.strategy, 'diagnostic-block');
+  assert.ok(out.includes('expected `u32`, found `String`'), 'code frame preserved');
+  assert.ok(out.includes('E0308 ×2') && out.includes('src/a.rs:10') && out.includes('src/b.rs:20'), 'repeat locations summarized');
+  assert.ok(out.includes('aborting due to 2 previous errors'), 'tail diagnostic preserved');
+}
+
+// ---- mixed content is uncertain and falls through ----
+{
+  const { meta } = run('mixed-diagnostics.txt', { exitCode: 1 });
+  assert.strictEqual(meta.strategy, 'generic');
 }
 
 console.log('strategies.test.js: all assertions passed');

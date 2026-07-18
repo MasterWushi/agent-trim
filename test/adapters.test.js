@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { readState, writeState, statePath } = require('../bin/lib/session-state');
 
 const A = (f) => path.join(__dirname, '..', 'adapters', f);
 function run(script, stdin, env) {
@@ -69,6 +70,33 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   const evt = { tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut } };
   const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_OFF: '1' });
   assert.strictEqual(r.stdout, '');
+}
+// Claude parity telemetry: runtime/profile, duration, and host completeness
+{
+  const metrics = path.join(os.tmpdir(), `trim-claude-metrics-${process.pid}.jsonl`);
+  const huge = Array.from({ length: 1800 }, (_, i) => `unique output row ${i} ${'x'.repeat(i % 11)}`).join('\n');
+  const evt = { tool_name: 'Bash', tool_input: { command: 'build' }, tool_response: { stdout: huge }, session_id: 'claude-parity' };
+  run('claude-posttooluse.js', JSON.stringify(evt), {
+    TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_PROFILE: 'eval', TRIM_SIDECAR_SHELL_MAX: String(Buffer.byteLength(huge) + 1),
+  });
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.runtime, 'claude');
+  assert.strictEqual(rec.profile, 'eval');
+  assert.strictEqual(rec.hostTruncated, false);
+  assert.ok(typeof rec.durMs === 'number');
+  fs.rmSync(metrics, { force: true });
+}
+// unavailable transcript preserves the prior pressure band
+{
+  const id = `pressure-preserve-${process.pid}`;
+  writeState('trim-pressure', id, { pressureBand: 'high', compactionEpoch: 2 });
+  const evt = {
+    tool_name: 'Bash', tool_input: { command: 'printf ok' }, tool_response: { stdout: 'ok' },
+    transcript_path: `/nonexistent/trim-${process.pid}.jsonl`, session_id: id,
+  };
+  run('claude-posttooluse.js', JSON.stringify(evt));
+  assert.strictEqual(readState('trim-pressure', id).pressureBand, 'high');
+  fs.rmSync(statePath('trim-pressure', id), { force: true });
 }
 // TRIM_OFF=1 command prefix → silent
 {
@@ -151,6 +179,20 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
 {
   const r = run('claude-postcompact.js', 'garbage');
   assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.stdout, '');
+}
+// postcompact resets pressure and bumps epoch
+{
+  const id = `postcompact-${process.pid}`;
+  const r = run('claude-postcompact.js', JSON.stringify({ session_id: id }));
+  assert.strictEqual(r.stdout, '');
+  const state = readState('trim-pressure', id);
+  assert.strictEqual(state.pressureBand, 'low');
+  assert.strictEqual(state.compactionEpoch, 1);
+}
+// current Claude PreCompact contract has no instruction output channel
+{
+  const r = run('claude-precompact.js', JSON.stringify({ hook_event_name: 'PreCompact' }));
   assert.strictEqual(r.stdout, '');
 }
 // subagent brief emits exactly one additionalContext payload

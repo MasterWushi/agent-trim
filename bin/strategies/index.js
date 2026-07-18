@@ -29,11 +29,14 @@ const strategies = [
   require('./go-test'),
   require('./diffstat'),
   require('./jsonl-log'),
+  require('./npm-audit'),
+  require('./diagnostic-block'),
 ];
 
 module.exports = function applyStrategies(text, ctx) {
   for (const s of strategies) {
     if (text.length < (s.minBytes || 2000)) continue;
+    if (s.maxBytes && Buffer.byteLength(text) > s.maxBytes) continue;
     let r;
     try {
       r = s.apply(text, ctx);

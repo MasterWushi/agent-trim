@@ -13,6 +13,8 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { readState, writeState } = require('../bin/lib/session-state');
+const { clearDuplicates } = require('../bin/lib/dup-detect');
 
 function main() {
   try {
@@ -32,6 +34,12 @@ function main() {
         /* ENOENT fine; anything else not worth breaking a session over */
       }
     }
+    const state = readState('trim-pressure', data.session_id);
+    writeState('trim-pressure', data.session_id, {
+      pressureBand: 'low',
+      compactionEpoch: (Number.isInteger(state.compactionEpoch) ? state.compactionEpoch : 0) + 1,
+    });
+    clearDuplicates(data.session_id);
   } catch {
     /* fail-open */
   }

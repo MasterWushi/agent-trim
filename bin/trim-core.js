@@ -7,8 +7,8 @@
 // are evidence, not noise: they get a much larger cap than passing runs.
 
 // Caps are in lines. TRIM_MAX_LINES is honored as a legacy alias for the fail cap.
-const CAP_PASS = int(process.env.TRIM_CAP_PASS, 120);
-const CAP_FAIL = int(process.env.TRIM_CAP_FAIL, int(process.env.TRIM_MAX_LINES, 300));
+const crypto = require('crypto');
+const { effectiveCaps } = require('./profiles');
 // Enumeration carve-out cap: large enough that a normal noisy build/log passes
 // whole — no omission markers at all — so a model asked to report EVERY item
 // has nothing elided to distrust. Still bounded against pathological dumps.
@@ -43,7 +43,10 @@ const SIGNAL_RE = new RegExp(
 const COMPOUND_RE = /\w*(?:Error|Warning|Exception)\b/;
 
 function isSignal(line) {
-  return SIGNAL_RE.test(line) || COMPOUND_RE.test(line);
+  return (
+    SIGNAL_RE.test(line) ||
+    ((line.includes('Error') || line.includes('Warning') || line.includes('Exception')) && COMPOUND_RE.test(line))
+  );
 }
 
 // Failure sniff for when no exit code is available. False positives only make
@@ -188,6 +191,7 @@ function requestsEnumeration(prompt) {
 // dropped as too common to discriminate.
 const RELEVANCE_COMMON = 50;
 const RELEVANCE_MAX_TOKENS = 8;
+const RELEVANCE_STOP = new Set(['error', 'warning', 'failed', 'output', 'result', 'everything', 'all', 'keep']);
 
 function extractRelevanceTokens(prompt) {
   if (typeof prompt !== 'string' || !prompt) return [];
@@ -213,6 +217,24 @@ function relevanceHits(lines, relevanceTokens) {
   return hits;
 }
 
+function mergeRelevance(relevance, legacyTokens) {
+  const out = [];
+  const add = (value) => {
+    if (typeof value !== 'string') return;
+    const token = value.trim().toLowerCase();
+    if (token.length < 3 || token.length > 120 || RELEVANCE_STOP.has(token) || out.includes(token)) return;
+    out.push(token);
+  };
+  for (const token of Array.isArray(legacyTokens) ? legacyTokens.slice(0, 8) : []) add(token);
+  if (relevance && typeof relevance === 'object' && !Array.isArray(relevance)) {
+    for (const key of ['paths', 'identifiers', 'diagnosticCodes', 'testNames']) {
+      const values = Array.isArray(relevance[key]) ? relevance[key].slice(0, 8) : [];
+      for (const value of values) add(value);
+    }
+  }
+  return out.slice(0, 24);
+}
+
 // Context-pressure scaling: transcript size is a free local proxy for how full
 // the context already is. Deep in a long session every kept line is re-sent
 // more times and pushes auto-compaction closer — so caps tighten as the
@@ -223,9 +245,19 @@ const PRESSURE_HIGH_BYTES = 1024 * 1024;
 const FLOOR_PASS = 30;
 const FLOOR_FAIL = 125;
 
-function pressureScale(transcriptBytes) {
-  if (!Number.isFinite(transcriptBytes) || transcriptBytes < PRESSURE_MID_BYTES) return 1;
-  return transcriptBytes < PRESSURE_HIGH_BYTES ? 0.75 : 0.5;
+function pressureScale(transcriptBytes, prevBand) {
+  if (!Number.isFinite(transcriptBytes)) return bandResult('low', prevBand);
+  let band;
+  if (prevBand === 'high' && transcriptBytes >= PRESSURE_HIGH_BYTES * 0.9) band = 'high';
+  else if (prevBand === 'mid' && transcriptBytes >= PRESSURE_MID_BYTES * 0.9 && transcriptBytes < PRESSURE_HIGH_BYTES * 1.1) band = 'mid';
+  else if (prevBand === 'low' && transcriptBytes < PRESSURE_MID_BYTES * 1.1) band = 'low';
+  else band = transcriptBytes < PRESSURE_MID_BYTES ? 'low' : transcriptBytes < PRESSURE_HIGH_BYTES ? 'mid' : 'high';
+  return bandResult(band, prevBand);
+}
+
+function bandResult(band, prevBand) {
+  const scale = band === 'high' ? 0.5 : band === 'mid' ? 0.75 : 1;
+  return prevBand === undefined ? scale : { scale, band };
 }
 
 // ---- sidecar: very large outputs don't enter context at all ----
@@ -239,7 +271,6 @@ function pressureScale(transcriptBytes) {
 // Fail-open: any filesystem trouble falls back to the normal capped view.
 // Files are content-addressed (idempotent on re-fire) and left to OS temp
 // cleaning, like the other state files.
-const SIDECAR_MIN_CHARS = int(process.env.TRIM_SIDECAR_MIN, 15000);
 // Upper bound for SHELL outputs only: harnesses (Claude Code measured at
 // ~29KB) may truncate a shell result before the hook sees it, keeping the
 // full text in their own file. Sidecaring an already-truncated output would
@@ -288,6 +319,15 @@ function cheapHash(s) {
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0).toString(16);
+}
+
+function stripAnsi(text) {
+  return String(text || '').replace(ANSI_RE, '');
+}
+
+function hostCompleteness(text, isRead) {
+  if (isRead) return true;
+  return Buffer.byteLength(text || '') < SIDECAR_SHELL_MAX && !/\boutput (?:was )?truncated\b|full output saved/i.test(text || '');
 }
 
 function buildSidecarDigest(cleaned, relevanceTokens) {
@@ -368,7 +408,11 @@ function sweepSidecars(fs, path, now) {
 // companion (machine-readable, for tooling like PalSync — never shown to the
 // model). Idempotent per content. Returns the file path, or null on any
 // filesystem trouble (callers fall back to inline capping).
-function writeSidecarFile(cleaned, sessionId, census) {
+function sha256(text) {
+  return `sha256:${crypto.createHash('sha256').update(text).digest('hex')}`;
+}
+
+function writeSidecarFile(cleaned, sessionId, census, opts) {
   if (process.env.TRIM_SIDECAR === 'off') return null;
   try {
     const fs = require('fs');
@@ -380,13 +424,19 @@ function writeSidecarFile(cleaned, sessionId, census) {
     const { safeWriteFileSync } = require('./lib/safe-write');
     if (!fs.existsSync(file)) {
       safeWriteFileSync(file, cleaned);
+      const o = opts || {};
+      const observed = countSignals(cleaned);
       safeWriteFileSync(
         file.replace(/\.txt$/, '.meta.json'),
         JSON.stringify({
-          schema: 'agent-trim/sidecar-meta/1',
-          content: 'cleaned', // lossless-cleaned text, NOT original raw bytes
-          totalLines: cleaned.split('\n').length,
-          bytes: Buffer.byteLength(cleaned),
+          schema: 'agent-trim/sidecar-meta/2',
+          content: o.hostComplete === false ? 'host-truncated' : 'complete-cleaned',
+          runtime: o.runtime || 'unknown',
+          totalLinesObserved: cleaned.split('\n').length,
+          bytesObserved: Buffer.byteLength(cleaned),
+          hostComplete: o.hostComplete !== false,
+          diagnostics: { errors: observed.errors, warnings: observed.warnings },
+          contentHash: sha256(cleaned),
           census: census || '',
           sessionId: sessionId || null,
           createdAt: new Date().toISOString(),
@@ -399,14 +449,39 @@ function writeSidecarFile(cleaned, sessionId, census) {
   }
 }
 
+function readSidecarMeta(file) {
+  try {
+    const fs = require('fs');
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (value.schema === 'agent-trim/sidecar-meta/2') return value;
+    if (value.schema !== 'agent-trim/sidecar-meta/1') return null;
+    return {
+      schema: 'agent-trim/sidecar-meta/2',
+      content: 'complete-cleaned',
+      runtime: 'unknown',
+      totalLinesObserved: value.totalLines,
+      bytesObserved: value.bytes,
+      hostComplete: true,
+      diagnostics: { errors: 0, warnings: 0 },
+      contentHash: null,
+      census: value.census || '',
+      sessionId: value.sessionId || null,
+      createdAt: value.createdAt || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Digest-view sidecar for very large generic outputs. Returns { out, file }
 // or null when the sidecar path doesn't apply.
-function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
+function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate, opts) {
   if (process.env.TRIM_SIDECAR === 'off') return null;
-  if (typeof cleaned !== 'string' || cleaned.length < SIDECAR_MIN_CHARS) return null;
+  const o = opts || {};
+  if (typeof cleaned !== 'string' || cleaned.length < (o.sidecarMin || effectiveCaps(o.profile).sidecarMin)) return null;
   // A shell output at/above the host-truncation size was likely already cut
   // by the harness (see SIDECAR_SHELL_MAX): step aside to the inline cap.
-  if (hostMayTruncate && cleaned.length >= SIDECAR_SHELL_MAX) return null;
+  if (hostMayTruncate && o.hostComplete === undefined && cleaned.length >= SIDECAR_SHELL_MAX) return null;
   try {
     const path = require('path');
     const name = (sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '') + `${cheapHash(cleaned)}.txt`;
@@ -414,7 +489,7 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
     const d = buildSidecarDigest(cleaned, relevanceTokens);
     const header =
       `[trim hook: this output is ${d.total} lines (${d.census || '0 signal lines'}) ` +
-      `and was saved in full to ${file.replace(/\\/g, '/')}; the digest below keeps the head, tail, ` +
+      `and was ${o.hostComplete === false ? 'saved as observed (host may have truncated)' : 'saved in full'} to ${file.replace(/\\/g, '/')}; the digest below keeps the head, tail, ` +
       `every prompt-named line, and a sample of the signal lines, each with its L<n> line number. ` +
       `For anything else, read that file with a line offset/limit around the L<n> numbers you need. ` +
       `If that file no longer exists, re-run the command instead.]`;
@@ -423,7 +498,7 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate) {
     // nothing to cut — it would reproduce the input plus header overhead.
     // Bail before touching disk; the inline cap is a no-op there too.
     if (out.length >= cleaned.length) return null;
-    const written = writeSidecarFile(cleaned, sessionId, d.census);
+    const written = writeSidecarFile(cleaned, sessionId, d.census, o);
     if (!written) return null;
     return { out, file: written };
   } catch {
@@ -485,14 +560,35 @@ function omittedMarker(n) {
 function capLines(lines, cap, relevanceTokens, counter) {
   if (lines.length <= cap) return lines;
   const kept = new Set();
+  const signalKept = new Set();
   lines.forEach((line, i) => {
-    if (isSignal(line)) kept.add(i);
+    if (isSignal(line)) {
+      kept.add(i);
+      signalKept.add(i);
+    }
   });
-  for (const i of relevanceHits(lines, relevanceTokens)) kept.add(i);
+  const relevanceKept = new Set();
+  const relevanceBudget = cap;
+  const keepRelevant = (i) => {
+    if (i < 0 || i >= lines.length || relevanceKept.has(i) || relevanceKept.size >= relevanceBudget) return;
+    relevanceKept.add(i);
+    kept.add(i);
+  };
+  for (const i of relevanceHits(lines, relevanceTokens)) {
+    keepRelevant(i);
+    keepRelevant(i - 1);
+    keepRelevant(i + 1);
+    // Blank-line-delimited diagnostic blocks stay intact when relevance lands
+    // inside one. A small per-hit window and total budget prevent scattered
+    // hits from tiling a dense log and bypassing the cap.
+    for (let j = i - 2, n = 0; j >= 0 && lines[j].trim() && n < 20; j--, n++) keepRelevant(j);
+    for (let j = i + 2, n = 0; j < lines.length && lines[j].trim() && n < 20; j++, n++) keepRelevant(j);
+    if (relevanceKept.size >= relevanceBudget) break;
+  }
   // Mostly-signal output (error dumps, adversarial prose full of the word
   // "error"): cutting the few non-signal lines saves almost nothing and the
   // markers can even GROW the result while dropping the tail. Keep it whole.
-  if (kept.size >= lines.length * 0.9) return lines;
+  if (signalKept.size >= lines.length * 0.9) return lines;
   const budget = Math.max(0, cap - kept.size);
   const head = Math.ceil(budget * 0.6);
   const tail = budget - head;
@@ -584,13 +680,22 @@ function buildMeta(text, out, o, extra) {
     preservedWarnings: kept.warnings,
     omittedLines: extra.omittedLines || 0,
     sidecarPath: extra.sidecarPath || null,
+    hostComplete: o.hostComplete !== false,
+    runtime: o.runtime || null,
+    profile: o._profile || null,
     reason: extra.reason,
   };
 }
 
 function compress(text, opts) {
   if (!text) return { out: text, stats: null, meta: null };
-  const o = opts || {};
+  const o = { ...(opts || {}) };
+  if (!o.profile && !process.env.TRIM_PROFILE && o.relevance && o.relevance.taskPhase === 'final-verification') {
+    o.profile = 'final-verification';
+  }
+  const caps = effectiveCaps(o.profile);
+  o._profile = caps.profile;
+  const relevanceTokens = mergeRelevance(o.relevance, o.relevanceTokens);
   const inBytes = Buffer.byteLength(text);
 
   // 1. ANSI / OSC escape sequences
@@ -621,11 +726,19 @@ function compress(text, opts) {
       // recoverable copy on disk, pointer appended to the rendered view.
       let sidecarPath = null;
       let out = strat.out;
-      if (strat.lossy && !o.noSidecar && s.length >= SIDECAR_MIN_CHARS && !(o.hostMayTruncate && s.length >= SIDECAR_SHELL_MAX)) {
-        const side = writeSidecarFile(s, o.sessionId);
+      if (
+        strat.lossy &&
+        !o.noSidecar &&
+        s.length >= caps.sidecarMin &&
+        !(o.hostMayTruncate && o.hostComplete === undefined && s.length >= SIDECAR_SHELL_MAX)
+      ) {
+        const side = writeSidecarFile(s, o.sessionId, '', o);
         if (side) {
           sidecarPath = side;
-          out += `\n[trim hook: full ${inputLines}-line output saved to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`;
+          out +=
+            o.hostComplete === false
+              ? `\n[trim hook: ${inputLines}-line output saved as observed (host may have truncated) to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`
+              : `\n[trim hook: full ${inputLines}-line output saved to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`;
         }
       }
       if (out.length < s.length) {
@@ -644,7 +757,7 @@ function compress(text, opts) {
   // 4.5 very large outputs: full text to a sidecar file, digest in its place.
   // The enumeration carve-out is exempt — its whole point is nothing elided.
   if (!o.enumerate && !o.noSidecar) {
-    const side = maybeSidecar(s, o.relevanceTokens, o.sessionId, o.hostMayTruncate);
+    const side = maybeSidecar(s, relevanceTokens, o.sessionId, o.hostMayTruncate, { ...o, sidecarMin: caps.sidecarMin });
     if (side !== null) {
       return done(side.out, {
         strategy: 'sidecar',
@@ -682,12 +795,21 @@ function compress(text, opts) {
   const cap = o.enumerate
     ? CAP_ENUMERATE
     : o.isDump || looksLikeFailure(s, o.exitCode)
-      ? Math.max(FLOOR_FAIL, Math.round(CAP_FAIL * scale))
-      : Math.max(FLOOR_PASS, Math.round(CAP_PASS * scale));
-  lines = capLines(lines, cap, o.relevanceTokens, counter);
+      ? Math.max(FLOOR_FAIL, Math.round(caps.fail * scale))
+      : Math.max(FLOOR_PASS, Math.round(caps.pass * scale));
+  lines = capLines(lines, cap, relevanceTokens, counter);
 
   const out = lines.join('\n');
   const lossy = counter.omitted > 0 || counter.collapsed > 0;
+  if (out.length >= s.length && counter.omitted > 0) {
+    return done(s, {
+      strategy: 'generic',
+      lossy: false,
+      omittedLines: 0,
+      sidecarPath: null,
+      reason: 'lossless cleanup only; elision markers would not shrink output',
+    });
+  }
   return done(out, {
     strategy: 'generic',
     lossy,
@@ -746,16 +868,19 @@ function maybeLog(tag, stats, meta, extra) {
         ...(meta
           ? {
               strategy: meta.strategy,
-              changed: meta.changed,
-              lossy: meta.lossy,
+              changed: e.applied === false ? false : meta.changed,
+              lossy: e.applied === false ? false : meta.lossy,
               inBytes: meta.inputBytes,
-              outBytes: meta.outputBytes,
+              outBytes: e.applied === false ? meta.inputBytes : meta.outputBytes,
               inLines: meta.inputLines,
-              outLines: meta.outputLines,
-              omittedLines: meta.omittedLines,
+              outLines: e.applied === false ? meta.inputLines : meta.outputLines,
+              omittedLines: e.applied === false ? 0 : meta.omittedLines,
               errors: meta.preservedErrors,
               warnings: meta.preservedWarnings,
-              sidecar: !!meta.sidecarPath,
+              sidecar: e.applied === false ? false : !!meta.sidecarPath,
+              hostTruncated: meta.hostComplete === false,
+              runtime: meta.runtime,
+              profile: meta.profile,
             }
           : stats
             ? { inBytes: stats.inBytes, outBytes: stats.outBytes }
@@ -765,6 +890,11 @@ function maybeLog(tag, stats, meta, extra) {
           : {}),
         ...(e.bypass ? { bypass: true } : {}),
         ...(e.applied === false ? { applied: false } : {}),
+        ...(typeof e.durMs === 'number' ? { durMs: +e.durMs.toFixed(3) } : {}),
+        ...(e.dupExact ? { dupExact: true, dupAgeMs: e.dupAgeMs ?? null } : {}),
+        ...(typeof e.narrationWords === 'number' ? { narrationWords: e.narrationWords } : {}),
+        ...(e.narrationExceeded ? { narrationExceeded: true } : {}),
+        ...(typeof e.profile === 'string' && e.profile ? { profile: e.profile } : {}),
         // Optional caller-owned block (see docs/palsync.md): embedding tools
         // like PalSync attach their own measurements (raw bytes before their
         // native summarization, cache hits) without trim knowing about them.
@@ -780,10 +910,14 @@ module.exports = {
   countSignals,
   isSignal,
   writeSidecarFile,
+  readSidecarMeta,
+  sha256,
+  mergeRelevance,
   maybeLog,
   extractExitCode,
   isFileDump,
   looksLikeFailure,
+  FAILURE_RE,
   capLines,
   collapseTemplates,
   requestsEnumeration,
@@ -795,6 +929,9 @@ module.exports = {
   isSidecarPath,
   isLogPath,
   isGeneratedPath,
+  cheapHash,
+  stripAnsi,
+  hostCompleteness,
   SIDECAR_DIR,
 };
 

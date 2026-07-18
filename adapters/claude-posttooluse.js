@@ -23,8 +23,16 @@ const {
   isLogPath,
   isGeneratedPath,
   isSidecarPath,
+  hostCompleteness,
 } = require('../bin/trim-core.js');
 const { lastUserPromptText } = require('./lib/transcript');
+const { readState, writeState } = require('../bin/lib/session-state');
+const { detectDuplicate } = require('../bin/lib/dup-detect');
+
+const PRESSURE_KIND = 'trim-pressure';
+function claudeHostComplete(text, isRead) {
+  return hostCompleteness(text, isRead);
+}
 
 // Once per session, the first rewrite that leaves a visible [trim marker also
 // attaches additionalContext — delivered by Claude Code as a genuine
@@ -72,13 +80,20 @@ process.stdin.on('end', () => {
     }
 
     const promptText = lastUserPromptText(evt.transcript_path);
+    const pressureState = readState(PRESSURE_KIND, evt.session_id);
     let scale = 1;
+    let pressureBand = pressureState.pressureBand || 'low';
     if (process.env.TRIM_ADAPTIVE !== 'off') {
       try {
-        scale = pressureScale(fs.statSync(evt.transcript_path).size);
+        const pressure = pressureScale(fs.statSync(evt.transcript_path).size, pressureState.pressureBand || 'low');
+        scale = pressure.scale;
+        pressureBand = pressure.band;
       } catch {
         /* no transcript (bare harness): stay at 1 */
       }
+    }
+    if (pressureBand !== pressureState.pressureBand) {
+      writeState(PRESSURE_KIND, evt.session_id, { pressureBand, compactionEpoch: pressureState.compactionEpoch || 0 });
     }
     const r = evt.tool_response;
     // Claude Code's Bash tool_response carries no exit code ({stdout, stderr,
@@ -94,6 +109,9 @@ process.stdin.on('end', () => {
       relevanceTokens: extractRelevanceTokens(promptText),
       scale,
       sessionId: evt.session_id,
+      profile: process.env.TRIM_PROFILE,
+      runtime: 'claude',
+      relevance: evt.relevance,
       // Claude Code truncates a Bash result to ~29KB for the hook once its own
       // large-output persistence trips — the sidecar guard needs to know.
       hostMayTruncate: true,
@@ -114,10 +132,22 @@ process.stdin.on('end', () => {
         ...opts,
         isDump: true, // treat like failures: keep more, signal-anchored
         hostMayTruncate: undefined, // Read arrives complete
+        hostComplete: true,
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
-      if (out === file.content || out.length >= file.content.length - 32) return process.exit(0);
-      maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, { command: filePath });
+      const readDup = detectDuplicate(evt.session_id, file.content);
+      if (out === file.content || out.length >= file.content.length - 32) {
+        maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
+          command: filePath, applied: false, durMs: 0, dupExact: readDup.duplicate, dupAgeMs: readDup.ageMs,
+        });
+        return process.exit(0);
+      }
+      maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
+        command: filePath,
+        durMs: 0,
+        dupExact: readDup.duplicate,
+        dupAgeMs: readDup.ageMs,
+      });
       const hookSpecificOutput = {
         hookEventName: 'PostToolUse',
         updatedToolOutput: { ...r, file: { ...file, content: out, numLines: out.split('\n').length } },
@@ -133,13 +163,16 @@ process.stdin.on('end', () => {
     let inBytes = 0;
     let outBytes = 0;
     let bestMeta = null; // contract of the dominant field, for telemetry
+    let started = process.hrtime.bigint();
+    let allRaw = '';
     if (r && typeof r === 'object' && (r.stdout !== undefined || r.stderr !== undefined || r.output !== undefined)) {
       const next = { ...r };
       let changed = false;
       for (const field of ['stdout', 'stderr', 'output']) {
         if (typeof next[field] !== 'string' || !next[field]) continue;
+        allRaw += next[field] + '\n';
         inBytes += Buffer.byteLength(next[field]);
-        const { out, meta } = compress(next[field], opts);
+        const { out, meta } = compress(next[field], { ...opts, hostComplete: claudeHostComplete(next[field], false) });
         outBytes += Buffer.byteLength(out);
         if (!bestMeta || (meta && meta.inputBytes > bestMeta.inputBytes)) bestMeta = meta;
         if (out !== next[field]) {
@@ -152,15 +185,29 @@ process.stdin.on('end', () => {
       const original = typeof r === 'string' ? r : typeof evt.tool_output === 'string' ? evt.tool_output : undefined;
       if (original === undefined) return process.exit(0); // nothing we understand — leave untouched
       inBytes = Buffer.byteLength(original);
-      const { out, meta } = compress(original, opts);
+      allRaw = original;
+      const { out, meta } = compress(original, { ...opts, hostComplete: claudeHostComplete(original, false) });
       outBytes = Buffer.byteLength(out);
       bestMeta = meta;
       if (out !== original) updated = out;
     }
 
-    // Only rewrite when it actually saves space; small outputs pass through.
-    if (updated === undefined || outBytes >= inBytes - 32) return process.exit(0);
-    maybeLog('claude', { inBytes, outBytes }, bestMeta, { command: opts.command });
+    const duplicate = detectDuplicate(evt.session_id, allRaw);
+    const logExtra = {
+      command: opts.command,
+      durMs: Number(process.hrtime.bigint() - started) / 1e6,
+      dupExact: duplicate.duplicate,
+      dupAgeMs: duplicate.ageMs,
+    };
+    // Only rewrite when it actually saves space; small outputs pass through,
+    // but metrics still record duplicate incidence and the attempted result.
+    if (updated === undefined || outBytes >= inBytes - 32) {
+      maybeLog('claude', { inBytes, outBytes: outBytes || inBytes }, bestMeta, { ...logExtra, applied: false });
+      return process.exit(0);
+    }
+    maybeLog('claude', { inBytes, outBytes }, bestMeta, {
+      ...logExtra,
+    });
     const hookSpecificOutput = {
       hookEventName: 'PostToolUse',
       updatedToolOutput: updated,

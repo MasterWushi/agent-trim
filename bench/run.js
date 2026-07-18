@@ -8,6 +8,7 @@
 // so the baseline is an exact regression contract. Runtime is reported for
 // information only and never compared. Token figures are bytes/4 ESTIMATES.
 process.env.TRIM_SIDECAR = 'off';
+delete process.env.TRIM_PROFILE;
 
 const fs = require('fs');
 const path = require('path');
@@ -88,6 +89,10 @@ const CASES = [
   { file: 'unicode-crlf.txt', opts: { exitCode: 0 }, mustKeep: ['エラー: ファイルが見つかりません (error: file not found)'] },
   { file: 'progress-bars.txt', opts: { exitCode: 0 }, mustKeep: ['Download complete', 'extracted 214 files'] },
   { file: 'docker-build.txt', opts: { exitCode: 0, command: 'docker build .' }, mustKeep: ['writing image sha256:9f8e7d6c5b4a DONE 0.0s'] },
+  { file: 'npm-audit.json', opts: { exitCode: 1, command: 'npm audit --json' }, mustKeep: ['critical gamma', 'prototype pollution'] },
+  { file: 'rustc-diagnostics.txt', opts: { exitCode: 1, command: 'cargo check' }, mustKeep: ['expected `u32`, found `String`', 'src/a.rs:10', 'src/b.rs:20', 'aborting due to 2 previous errors'] },
+  { file: 'mixed-diagnostics.txt', opts: { exitCode: 1 }, mustKeep: ['Build system preamble', 'a.js:1:1: error E100: first'] },
+  { file: 'injection-relevance.txt', opts: { exitCode: 0 }, mustEqual: true },
 ];
 
 const rows = [];

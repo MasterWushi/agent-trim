@@ -5,6 +5,9 @@ const assert = require('assert');
 const { stepMeter, measureCurrentTurn, wordCount } = require('../adapters/claude-narration-meter.js');
 const { isRealUserPrompt } = require('../adapters/lib/transcript.js');
 const { BRIEF } = require('../adapters/claude-subagent-brief.js');
+const { PRESERVATION_INSTRUCTIONS } = require('../adapters/claude-precompact.js');
+
+assert.ok(PRESERVATION_INSTRUCTIONS.includes('unresolved failures') && PRESERVATION_INSTRUCTIONS.includes('[trim hook:'));
 
 // --- stepMeter: pure firing decision ---
 // under budget: never fires

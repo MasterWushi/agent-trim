@@ -1,0 +1,9 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "alpha": { "name": "alpha", "severity": "high", "isDirect": true, "via": [{"source": 1001, "name": "alpha", "title": "prototype pollution", "severity": "high"}], "effects": [], "range": "<2.0.0", "nodes": ["node_modules/alpha"], "fixAvailable": true },
+    "beta": { "name": "beta", "severity": "moderate", "isDirect": false, "via": ["alpha"], "effects": [], "range": "1.0.0 - 1.4.0", "nodes": ["node_modules/beta"], "fixAvailable": {"name":"beta","version":"2.0.0","isSemVerMajor":true} },
+    "gamma": { "name": "gamma", "severity": "critical", "isDirect": true, "via": [{"source": 1002, "name": "gamma", "title": "remote code execution", "severity": "critical"}], "effects": [], "range": "*", "nodes": ["node_modules/gamma"], "fixAvailable": false }
+  },
+  "metadata": { "vulnerabilities": { "info": 0, "low": 0, "moderate": 1, "high": 1, "critical": 1, "total": 3 }, "dependencies": {"prod": 200, "dev": 100, "optional": 4, "peer": 2, "peerOptional": 0, "total": 306}, "totalDependencies": 306 }
+}

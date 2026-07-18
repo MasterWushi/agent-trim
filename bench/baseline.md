@@ -24,5 +24,9 @@ tokens again on every later turn the result stays in context.
 | unicode-crlf.txt | generic | 9303 | 200 | 0.021 | 2326 | 50 | yes | 1 | 0 |
 | progress-bars.txt | generic | 8329 | 131 | 0.016 | 2082 | 33 | no | 0 | 0 |
 | docker-build.txt | generic | 52438 | 2634 | 0.05 | 13110 | 659 | yes | 0 | 0 |
+| npm-audit.json | npm-audit | 1058 | 197 | 0.186 | 265 | 49 | yes | 2 | 0 |
+| rustc-diagnostics.txt | diagnostic-block | 551 | 342 | 0.621 | 138 | 86 | yes | 2 | 1 |
+| mixed-diagnostics.txt | generic | 396 | 256 | 0.646 | 99 | 64 | yes | 2 | 1 |
+| injection-relevance.txt | generic | 275 | 275 | 1 | 69 | 69 | no | 0 | 0 |
 
-**Overall: 321629 → 56572 bytes (ratio 0.176), ~66264 estimated tokens saved per send; 0 false-elision failures.**
+**Overall: 323909 → 57642 bytes (ratio 0.178), ~66567 estimated tokens saved per send; 0 false-elision failures.**

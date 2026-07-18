@@ -1,0 +1,14 @@
+Build system preamble that must prevent an uncertain parser from taking over.
+ordinary status line 1
+ordinary status line 2
+ordinary status line 3
+ordinary status line 4
+ordinary status line 5
+ordinary status line 6
+ordinary status line 7
+ordinary status line 8
+ordinary status line 9
+ordinary status line 10
+a.js:1:1: error E100: first
+b.js:2:1: warning W200: second
+c.js:3:1: error E300: third

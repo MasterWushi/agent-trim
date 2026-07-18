@@ -38,6 +38,9 @@ added; existing ones won't change meaning.
   "preservedWarnings": 2,
   "omittedLines": 1231,
   "sidecarPath": "/tmp/trim-sidecar/abc123-9f3a1c2e.txt", // or null
+  "hostComplete": true,
+  "runtime": "pi",
+  "profile": "interactive-long",
   "reason": "passing tests collapsed by suite; failures kept verbatim"
 }
 ```
@@ -64,19 +67,28 @@ Everything stays local; there is no network path anywhere in Agent Trim.
 ## 4. Sidecar metadata companion
 
 Every sidecar `X.txt` gets an `X.meta.json` (schema id
-`agent-trim/sidecar-meta/1`):
+`agent-trim/sidecar-meta/2`):
 
 ```jsonc
 {
-  "schema": "agent-trim/sidecar-meta/1",
-  "content": "cleaned",     // the .txt holds lossless-cleaned text, not raw bytes
-  "totalLines": 1302,
-  "bytes": 48291,
+  "schema": "agent-trim/sidecar-meta/2",
+  "content": "complete-cleaned", // or "host-truncated"
+  "runtime": "pi",
+  "totalLinesObserved": 1302,
+  "bytesObserved": 48291,
+  "hostComplete": true,
+  "diagnostics": { "errors": 2, "warnings": 3 },
+  "contentHash": "sha256:...",
   "census": "2 errors, 3 warnings",
   "sessionId": "abc123",
   "createdAt": "2026-07-16T21:00:00.000Z"
 }
 ```
+
+Readers should call `readSidecarMeta(path)`; it normalizes legacy v1 companions
+into the v2 shape. V1 remains grandfathered. Content filenames and visible
+markers continue using FNV-1a, preserving the stable PalSync marker protocol;
+SHA-256 is used only for v2 provenance and duplicate metrics.
 
 Sidecars are content-addressed (`<session>-<fnv1a(content)>.txt`) in
 `os.tmpdir()/trim-sidecar/`, written atomically with 0600 permissions, and
@@ -95,7 +107,7 @@ was trimmed" from the text alone.
 
 The full list is in the README; the ones relevant to embedding:
 `TRIM_OFF=1` (bypass), `TRIM_STRATEGIES=off`, `TRIM_SIDECAR=off`,
-`TRIM_METRICS=<path>`, `TRIM_KEEP_RE=<regex>`.
+`TRIM_METRICS=<path>`, `TRIM_KEEP_RE=<regex>`, `TRIM_PROFILE=<name>`.
 
 ## Explicitly out of scope
 

@@ -36,6 +36,7 @@ fs.writeFileSync(
 );
 fs.writeFileSync(path.join(HOME, '.claude', 'CLAUDE.md'), '# my rules\n\n- be nice\n');
 fs.mkdirSync(path.join(HOME, '.config', 'opencode'), { recursive: true });
+fs.mkdirSync(path.join(HOME, '.pi', 'agent'), { recursive: true });
 
 const env = { ...process.env, HOME };
 const install = () => execFileSync('bash', [path.join(WORK, 'install.sh')], { env, encoding: 'utf8' });
@@ -56,6 +57,8 @@ install();
   assert.ok(claudeMd().includes('<!-- trim:style:start -->'), 'style appended');
   assert.ok(claudeMd().startsWith('# my rules'), 'user CLAUDE.md content intact');
   assert.ok(fs.existsSync(path.join(HOME, '.config', 'opencode', 'plugins', 'trim.ts')), 'opencode plugin installed');
+  const piExtension = fs.readFileSync(path.join(HOME, '.pi', 'agent', 'extensions', 'trim.ts'), 'utf8');
+  assert.ok(piExtension.includes(path.join(WORK, 'adapters', 'lib', 'pi-runtime.js')), 'pi extension points at installed runtime');
 }
 
 // ---- second install: idempotent ----
@@ -80,6 +83,7 @@ uninstall();
   assert.ok(!claudeMd().includes('trim:style:start'), 'style block removed');
   assert.ok(claudeMd().includes('# my rules'), 'user CLAUDE.md text intact');
   assert.ok(!fs.existsSync(path.join(HOME, '.config', 'opencode', 'plugins', 'trim.ts')), 'opencode plugin removed');
+  assert.ok(!fs.existsSync(path.join(HOME, '.pi', 'agent', 'extensions', 'trim.ts')), 'pi extension removed');
 }
 
 // ---- fresh HOME with .claude dir but NO settings.json (new machine) ----

@@ -8,6 +8,8 @@ const {
   requestsEnumeration,
   extractRelevanceTokens,
   pressureScale,
+  readSidecarMeta,
+  capLines,
 } = require('../bin/trim-core.js');
 
 // ANSI strip
@@ -114,6 +116,16 @@ assert.deepStrictEqual(extractRelevanceTokens('no marked spans here'), []);
   const out = compress(lines.join('\n'), { exitCode: 0, noSidecar: true, relevanceTokens: ['ioredis'] }).out;
   assert.ok(out.includes('ioredis resolved to 5.3.2'), 'relevance line kept');
 }
+// scattered relevance hits cannot tile a dense log and bypass the cap
+{
+  const lines = Array.from({ length: 2000 }, (_, i) =>
+    i % 50 === 0 ? `ok widgetfoo step ${i}` : `line ${i} filler text`
+  );
+  const out = capLines(lines, 120, ['widgetfoo']);
+  assert.ok(out.length <= 140, `relevance view stays near cap: ${out.length}`);
+  assert.ok(out.includes('ok widgetfoo step 0'), 'relevance hit kept');
+  assert.ok(out.some((line) => line.includes('lines omitted')), 'omission marker present');
+}
 
 // pressure scaling: inert below 400KB, tightens after, floors hold
 assert.strictEqual(pressureScale(100 * 1024), 1);
@@ -157,6 +169,18 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
   assert.ok(!guarded.includes('saved in full to'), 'guard skips sidecar');
   assert.ok(guarded.includes('omitted') || guarded.includes('collapsed'), 'falls back to inline cap');
 
+  // exact host truncation knowledge permits an observed-only sidecar whose
+  // marker and metadata never claim completeness
+  const observed = compress(src, { exitCode: 0, hostMayTruncate: true, hostComplete: false, runtime: 'pi', sessionId: 'observed' }).out;
+  assert.ok(observed.includes('saved as observed (host may have truncated)'), 'honest observed-only marker');
+  const observedFile = observed.match(/truncated\) to (\S+);/)[1];
+  const observedMeta = JSON.parse(fs.readFileSync(observedFile.replace(/\.txt$/, '.meta.json'), 'utf8'));
+  assert.strictEqual(observedMeta.content, 'host-truncated');
+  assert.strictEqual(observedMeta.hostComplete, false);
+  assert.strictEqual(observedMeta.runtime, 'pi');
+  fs.rmSync(observedFile, { force: true });
+  fs.rmSync(observedFile.replace(/\.txt$/, '.meta.json'), { force: true });
+
   // re-reading a sidecar never re-sidecars — capped inline instead
   const reread = compress(src, { exitCode: 0, noSidecar: true }).out;
   assert.ok(!reread.includes('saved in full to'), 'no nested sidecar');
@@ -171,10 +195,12 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
     const metaFile = file.replace(/\.txt$/, '.meta.json');
     assert.ok(fs.existsSync(metaFile), 'meta.json companion written');
     const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
-    assert.strictEqual(m.schema, 'agent-trim/sidecar-meta/1');
-    assert.strictEqual(m.content, 'cleaned');
-    assert.strictEqual(m.totalLines, src.split('\n').length);
-    assert.strictEqual(m.bytes, Buffer.byteLength(src));
+    assert.strictEqual(m.schema, 'agent-trim/sidecar-meta/2');
+    assert.strictEqual(m.content, 'complete-cleaned');
+    assert.strictEqual(m.totalLinesObserved, src.split('\n').length);
+    assert.strictEqual(m.bytesObserved, Buffer.byteLength(src));
+    assert.strictEqual(m.hostComplete, true);
+    assert.ok(/^sha256:[0-9a-f]{64}$/.test(m.contentHash));
     assert.ok(m.census.includes('1 error'), 'census in companion');
     fs.rmSync(metaFile, { force: true });
   }
@@ -200,6 +226,20 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
   assert.ok(isGeneratedPath('package-lock.json') && isGeneratedPath('a/node_modules/x/index.js') && isGeneratedPath('app.min.js'), 'generated paths');
   assert.ok(!isGeneratedPath('src/lock.js'), 'source is not generated');
   assert.ok(!isSidecarPath(path.join(SIDECAR_DIR, 'nested', 'x.txt')), 'nested path is not sidecar dir');
+}
+
+// v1 sidecar readers normalize into the v2 contract
+{
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const file = path.join(os.tmpdir(), `trim-v1-meta-${process.pid}.json`);
+  fs.writeFileSync(file, JSON.stringify({ schema: 'agent-trim/sidecar-meta/1', content: 'cleaned', totalLines: 4, bytes: 10, census: '1 warning' }));
+  const normalized = readSidecarMeta(file);
+  assert.strictEqual(normalized.schema, 'agent-trim/sidecar-meta/2');
+  assert.strictEqual(normalized.totalLinesObserved, 4);
+  assert.strictEqual(normalized.hostComplete, true);
+  fs.rmSync(file, { force: true });
 }
 
 // idempotent-ish: compressing compressed output does not grow

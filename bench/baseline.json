@@ -1,11 +1,11 @@
 {
   "summary": {
-    "fixtures": 18,
+    "fixtures": 22,
     "falseElisionFailures": 0,
-    "totalInBytes": 321629,
-    "totalOutBytes": 56572,
-    "overallRatio": 0.176,
-    "estTokensSaved": 66264
+    "totalInBytes": 323909,
+    "totalOutBytes": 57642,
+    "overallRatio": 0.178,
+    "estTokensSaved": 66567
   },
   "rows": [
     {
@@ -221,6 +221,54 @@
       "estTokensIn": 13110,
       "estTokensOut": 659,
       "lossy": true,
+      "errorsKept": 0,
+      "warningsKept": 0
+    },
+    {
+      "file": "npm-audit.json",
+      "strategy": "npm-audit",
+      "inBytes": 1058,
+      "outBytes": 197,
+      "ratio": 0.186,
+      "estTokensIn": 265,
+      "estTokensOut": 49,
+      "lossy": true,
+      "errorsKept": 2,
+      "warningsKept": 0
+    },
+    {
+      "file": "rustc-diagnostics.txt",
+      "strategy": "diagnostic-block",
+      "inBytes": 551,
+      "outBytes": 342,
+      "ratio": 0.621,
+      "estTokensIn": 138,
+      "estTokensOut": 86,
+      "lossy": true,
+      "errorsKept": 2,
+      "warningsKept": 1
+    },
+    {
+      "file": "mixed-diagnostics.txt",
+      "strategy": "generic",
+      "inBytes": 396,
+      "outBytes": 256,
+      "ratio": 0.646,
+      "estTokensIn": 99,
+      "estTokensOut": 64,
+      "lossy": true,
+      "errorsKept": 2,
+      "warningsKept": 1
+    },
+    {
+      "file": "injection-relevance.txt",
+      "strategy": "generic",
+      "inBytes": 275,
+      "outBytes": 275,
+      "ratio": 1,
+      "estTokensIn": 69,
+      "estTokensOut": 69,
+      "lossy": false,
       "errorsKept": 0,
       "warningsKept": 0
     }
