@@ -10,6 +10,7 @@ const {
   pressureScale,
   readSidecarMeta,
   capLines,
+  protectedTrailer,
 } = require('../bin/trim-core.js');
 
 // ANSI strip
@@ -270,6 +271,83 @@ assert.strictEqual(compress('').out, '');
   assert.ok(!JSON.stringify(rec).includes('SECRET'), 'full command text never logged');
   assert.strictEqual(rec.strategy, 'generic');
   fs.rmSync(mPath, { force: true });
+}
+
+// T1: protected trailer stays the last line
+{
+  const trailer = 'Full result: .palsync/artifacts/ab12.json';
+  const big = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
+  const { out } = compress(big);
+  const nonEmpty = out.split('\n').filter((l) => l.trim());
+  assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'trailer is last non-empty line');
+  const markerIdx = out.indexOf('[trim hook:');
+  const trailerIdx = out.lastIndexOf(trailer);
+  assert.ok(markerIdx !== -1 && markerIdx < trailerIdx, 'marker present before trailer');
+}
+
+// no matching trailer -> byte-identical to current (pre-T1) behaviour
+{
+  const before = compress('x\nx\nx\nx\ny').out;
+  assert.strictEqual(before, 'x  [trim hook: line repeated 4x]\ny', 'regression guard: unrelated behaviour unchanged');
+}
+
+// trailer present but out === text (nothing changed) -> byte-identical, no duplicate
+{
+  const clean = 'ok\nFull result: .palsync/artifacts/ab12.json';
+  const { out } = compress(clean);
+  assert.strictEqual(out, clean, 'unchanged input stays unchanged, no duplicate trailer');
+}
+
+// trailer appears twice in input -> output ends with exactly one copy
+{
+  const trailer = 'Full result: .palsync/artifacts/ab12.json';
+  const big =
+    trailer +
+    '\n' +
+    'installed package-' +
+    Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') +
+    `\n${trailer}`;
+  const { out } = compress(big);
+  const count = out.split('\n').filter((l) => l.trim() === trailer).length;
+  assert.strictEqual(count, 1, 'exactly one trailer copy survives');
+  const nonEmpty = out.split('\n').filter((l) => l.trim());
+  assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'the surviving copy is last');
+}
+
+// input where the trailer is the only line -> unchanged
+{
+  const only = 'Full result: .palsync/artifacts/ab12.json';
+  assert.strictEqual(compress(only).out, only, 'single-line trailer-only input unchanged');
+}
+
+// TRIM_KEEP_LAST_RE: custom pattern honoured alongside the default
+{
+  delete require.cache[require.resolve('../bin/trim-core.js')];
+  process.env.TRIM_KEEP_LAST_RE = '^CUSTOM: .+$';
+  const { compress: compress2, protectedTrailer: protectedTrailer2 } = require('../bin/trim-core.js');
+  assert.ok(protectedTrailer2('a\nCUSTOM: keep-me'), 'custom pattern recognized');
+  assert.ok(protectedTrailer2('a\nFull result: x'), 'default pattern still recognized alongside custom');
+  const big = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + '\nCUSTOM: keep-me';
+  const out = compress2(big).out;
+  const nonEmpty = out.split('\n').filter((l) => l.trim());
+  assert.strictEqual(nonEmpty[nonEmpty.length - 1], 'CUSTOM: keep-me', 'custom trailer kept last');
+  delete process.env.TRIM_KEEP_LAST_RE;
+  delete require.cache[require.resolve('../bin/trim-core.js')];
+}
+
+// TRIM_KEEP_LAST_RE invalid regex -> does not throw; default still protected
+{
+  delete require.cache[require.resolve('../bin/trim-core.js')];
+  process.env.TRIM_KEEP_LAST_RE = '([unclosed';
+  const { compress: compress3, protectedTrailer: protectedTrailer3 } = require('../bin/trim-core.js');
+  assert.ok(protectedTrailer3('a\nFull result: x'), 'default pattern still protected despite invalid custom regex');
+  const trailer = 'Full result: .palsync/artifacts/ab12.json';
+  const big = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
+  const out = compress3(big).out;
+  const nonEmpty = out.split('\n').filter((l) => l.trim());
+  assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'default trailer kept despite invalid TRIM_KEEP_LAST_RE');
+  delete process.env.TRIM_KEEP_LAST_RE;
+  delete require.cache[require.resolve('../bin/trim-core.js')];
 }
 
 console.log('core.test.js: all assertions passed');

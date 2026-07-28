@@ -68,6 +68,33 @@ function int(v, d) {
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
 
+// A trailing line another tool has declared load-bearing (e.g. PalSync's
+// `Full result: <path>` artifact pointer). If the input's last non-empty
+// line matches, the same line must be the last line we return — after any
+// marker we add. Retention alone is not enough: the contract is "ends with".
+const KEEP_LAST_RE = (() => {
+  const custom = process.env.TRIM_KEEP_LAST_RE;
+  const base = '^Full result: .+$';
+  try {
+    return new RegExp(custom ? `(?:${base})|(?:${custom})` : base);
+  } catch {
+    return new RegExp(base); // invalid user regex must never disable the default
+  }
+})();
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function protectedTrailer(text) {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].trim()) continue;
+    return KEEP_LAST_RE.test(lines[i]) ? lines[i] : null;
+  }
+  return null;
+}
+
 // Progress bars redraw via a bare \r; only the final state of each physical
 // line matters. \r\n is an ordinary Windows line ending, not a redraw —
 // normalize it first or every CRLF line collapses to empty.
@@ -708,11 +735,21 @@ function compress(text, opts) {
   // 4. collapse 2+ blank lines to one
   s = s.replace(/\n{3,}/g, '\n\n');
   const inputLines = s.split('\n').length;
-  const done = (out, extra) => ({
-    out,
-    stats: { inBytes, outBytes: Buffer.byteLength(out) },
-    meta: buildMeta(text, out, o, { inputLines, ...extra }),
-  });
+  const trailer = protectedTrailer(text);
+  const done = (out, extra) => {
+    if (trailer && out !== text) {
+      const kept = out.split('\n').filter((l) => l.trim());
+      if (kept[kept.length - 1] !== trailer) {
+        out = out.replace(new RegExp(`\\n?${escapeRe(trailer)}\\s*$`), '');
+        out = out.replace(/\n+$/, '') + '\n' + trailer;
+      }
+    }
+    return {
+      out,
+      stats: { inBytes, outBytes: Buffer.byteLength(out) },
+      meta: buildMeta(text, out, o, { inputLines, ...extra }),
+    };
+  };
 
   // 4.4 structured-format strategies: when the cleaned text is recognizably a
   // known machine format (test runner, eslint --format json, diffstat, ...),
@@ -933,6 +970,8 @@ module.exports = {
   stripAnsi,
   hostCompleteness,
   SIDECAR_DIR,
+  protectedTrailer,
+  KEEP_LAST_RE,
 };
 
 if (require.main === module) {
