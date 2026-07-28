@@ -714,9 +714,33 @@ function buildMeta(text, out, o, extra) {
   };
 }
 
+// Results that are already a digest produced by another tool. Compressing a
+// summary risks cutting the only surviving copy of evidence, and our
+// completeness marker would be a claim about someone else's elision, not
+// ours. Pass through, record it, do nothing. Our own `[trim hook: ...]` /
+// `[trim digest: ...]` markers are excluded — a sidecar re-read of our own
+// output is not a foreign digest.
+function alreadyCondensed(text) {
+  if (process.env.TRIM_CONDENSED_PASSTHROUGH === 'off') return false;
+  if (protectedTrailer(text)) return true; // artifact-pointer trailer
+  if (/^\[(?!trim\b)[a-z][\w-]* (hook|digest):/m.test(text)) return true; // foreign marker
+  return false;
+}
+
 function compress(text, opts) {
   if (!text) return { out: text, stats: null, meta: null };
   const o = { ...(opts || {}) };
+  if (alreadyCondensed(text)) {
+    return {
+      out: text,
+      stats: { inBytes: Buffer.byteLength(text), outBytes: Buffer.byteLength(text) },
+      meta: buildMeta(text, text, o, {
+        inputLines: text.split('\n').length,
+        strategy: 'passthrough-condensed',
+        reason: 'already condensed by another tool; not ours to re-elide',
+      }),
+    };
+  }
   if (!o.profile && !process.env.TRIM_PROFILE && o.relevance && o.relevance.taskPhase === 'final-verification') {
     o.profile = 'final-verification';
   }
@@ -972,6 +996,7 @@ module.exports = {
   SIDECAR_DIR,
   protectedTrailer,
   KEEP_LAST_RE,
+  alreadyCondensed,
 };
 
 if (require.main === module) {

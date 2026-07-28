@@ -11,6 +11,7 @@ const {
   readSidecarMeta,
   capLines,
   protectedTrailer,
+  alreadyCondensed,
 } = require('../bin/trim-core.js');
 
 // ANSI strip
@@ -274,7 +275,11 @@ assert.strictEqual(compress('').out, '');
 }
 
 // T1: protected trailer stays the last line
+// (forced through TRIM_CONDENSED_PASSTHROUGH=off: T2's own passthrough would
+// otherwise short-circuit any trailer-bearing input before it reaches the
+// cap — see the T2 block below. T1 remains defence-in-depth for that case.)
 {
+  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
   const big = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
   const { out } = compress(big);
@@ -283,6 +288,7 @@ assert.strictEqual(compress('').out, '');
   const markerIdx = out.indexOf('[trim hook:');
   const trailerIdx = out.lastIndexOf(trailer);
   assert.ok(markerIdx !== -1 && markerIdx < trailerIdx, 'marker present before trailer');
+  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
 }
 
 // no matching trailer -> byte-identical to current (pre-T1) behaviour
@@ -300,6 +306,7 @@ assert.strictEqual(compress('').out, '');
 
 // trailer appears twice in input -> output ends with exactly one copy
 {
+  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
   const big =
     trailer +
@@ -312,6 +319,7 @@ assert.strictEqual(compress('').out, '');
   assert.strictEqual(count, 1, 'exactly one trailer copy survives');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'the surviving copy is last');
+  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
 }
 
 // input where the trailer is the only line -> unchanged
@@ -324,6 +332,7 @@ assert.strictEqual(compress('').out, '');
 {
   delete require.cache[require.resolve('../bin/trim-core.js')];
   process.env.TRIM_KEEP_LAST_RE = '^CUSTOM: .+$';
+  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const { compress: compress2, protectedTrailer: protectedTrailer2 } = require('../bin/trim-core.js');
   assert.ok(protectedTrailer2('a\nCUSTOM: keep-me'), 'custom pattern recognized');
   assert.ok(protectedTrailer2('a\nFull result: x'), 'default pattern still recognized alongside custom');
@@ -332,6 +341,7 @@ assert.strictEqual(compress('').out, '');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], 'CUSTOM: keep-me', 'custom trailer kept last');
   delete process.env.TRIM_KEEP_LAST_RE;
+  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
   delete require.cache[require.resolve('../bin/trim-core.js')];
 }
 
@@ -339,6 +349,7 @@ assert.strictEqual(compress('').out, '');
 {
   delete require.cache[require.resolve('../bin/trim-core.js')];
   process.env.TRIM_KEEP_LAST_RE = '([unclosed';
+  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const { compress: compress3, protectedTrailer: protectedTrailer3 } = require('../bin/trim-core.js');
   assert.ok(protectedTrailer3('a\nFull result: x'), 'default pattern still protected despite invalid custom regex');
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
@@ -347,7 +358,37 @@ assert.strictEqual(compress('').out, '');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'default trailer kept despite invalid TRIM_KEEP_LAST_RE');
   delete process.env.TRIM_KEEP_LAST_RE;
+  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
   delete require.cache[require.resolve('../bin/trim-core.js')];
+}
+
+// T2: already-condensed passthrough
+{
+  const fs = require('fs');
+  const { SIDECAR_DIR } = require('../bin/trim-core.js');
+  const trailer = 'Full result: .palsync/artifacts/ab12.json';
+  const envelope = '{"x":1}'.repeat(6000) + `\n${trailer}`; // ~40KB
+  assert.ok(Buffer.byteLength(envelope) > 40000, 'fixture is ~40KB');
+  const before = fs.existsSync(SIDECAR_DIR) ? new Set(fs.readdirSync(SIDECAR_DIR)) : new Set();
+  const { out, meta } = compress(envelope);
+  assert.strictEqual(out, envelope, '40KB envelope with Full result trailer passes through byte-identical');
+  assert.strictEqual(meta.strategy, 'passthrough-condensed');
+  assert.strictEqual(meta.changed, false);
+  assert.strictEqual(meta.lossy, false);
+  const after = fs.existsSync(SIDECAR_DIR) ? new Set(fs.readdirSync(SIDECAR_DIR)) : new Set();
+  assert.strictEqual(after.size, before.size, 'no sidecar file created');
+
+  const foreign = 'plain text\n[palsync digest: 12 grouped]\nmore text';
+  assert.strictEqual(compress(foreign).out, foreign, 'foreign marker line triggers passthrough');
+
+  const ours = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + '\n[trim hook: full 2000-line output saved to /tmp/x.txt — read with offset/limit if needed]';
+  assert.ok(!alreadyCondensed(ours), 'our own trim hook marker is not treated as foreign');
+
+  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
+  const capFixture = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
+  const resumed = compress(capFixture).out;
+  assert.notStrictEqual(resumed, capFixture, 'TRIM_CONDENSED_PASSTHROUGH=off resumes normal compression');
+  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
 }
 
 console.log('core.test.js: all assertions passed');
