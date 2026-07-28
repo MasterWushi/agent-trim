@@ -966,6 +966,10 @@ function maybeLog(tag, stats, meta, extra) {
               hostTruncated: meta.hostComplete === false,
               runtime: meta.runtime,
               profile: meta.profile,
+              inTokEst: meta.inputTokenEstimate,
+              outTokEst: e.applied === false ? meta.inputTokenEstimate : meta.outputTokenEstimate,
+              tokenClass: meta.tokenClass,
+              estimator: meta.estimator,
             }
           : stats
             ? { inBytes: stats.inBytes, outBytes: stats.outBytes }

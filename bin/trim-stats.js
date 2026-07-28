@@ -4,13 +4,19 @@
 //   node bin/trim-stats.js [path] [--json]
 // Default path: $TRIM_METRICS or ~/.trim-metrics.jsonl.
 //
-// Token figures are ESTIMATES (bytes / 4, the usual rough heuristic for
-// English/code) — actual provider token counts are not available here, and
-// this tool never claims otherwise. Real savings compound further because
-// tool results are re-sent as input on every following turn of a session.
+// Every figure printed here carries an evidence label so a reader knows what
+// kind of claim it is, never an unqualified percentage:
+//   L1-component   — bytes / lines / token estimate changed
+//   L2-preservation — diagnostics and identifiers verified retained
+//   L3-context     — model-visible payload verified
+//   L8-trajectory  — reruns / re-reads / turns observed
+//
+// Token figures use the class-based estimator (bin/lib/token-estimate.js)
+// when a record carries it; older metrics lines (pre-T5) fall back to the
+// bytes/4 heuristic so mixed-vintage logs still produce a valid report —
+// the JSONL itself is never rewritten.
 const fs = require('fs');
 const os = require('os');
-
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
 const file = args.find((a) => !a.startsWith('--')) || process.env.TRIM_METRICS || os.homedir() + '/.trim-metrics.jsonl';
@@ -30,7 +36,26 @@ for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
   }
 }
 
-const est = (bytes) => Math.round(bytes / 4);
+if (!recs.length) {
+  if (asJson) console.log(JSON.stringify({ file, message: 'no data' }));
+  else console.log(`trim metrics — ${file}\n  no data`);
+  process.exit(0);
+}
+
+const L = (label, value) => `${value} [${label}]`;
+const evidence = (label, value) => ({ value, evidence: label });
+
+// Estimator name/class-mix per record: prefer T5's class-based fields when
+// present, fall back to bytes/4 for old lines so mixed logs don't NaN.
+function recTokEst(r) {
+  if (typeof r.inTokEst === 'number' && typeof r.outTokEst === 'number') {
+    return { inTok: r.inTokEst, outTok: r.outTokEst, cls: r.tokenClass || 'mixed', estimator: r.estimator || 'class/1' };
+  }
+  const inBytes = r.inBytes || 0;
+  const outBytes = r.outBytes || 0;
+  return { inTok: Math.round(inBytes / 4), outTok: Math.round(outBytes / 4), cls: null, estimator: 'bytes/4' };
+}
+
 const num = (n) => n.toLocaleString('en-US');
 const processed = recs.filter((r) => !r.bypass);
 const changed = processed.filter((r) => r.changed);
@@ -64,22 +89,43 @@ for (const r of recs) {
   else lastLossy.delete(r.cmdHash);
 }
 
+// Per-record token estimates (class-based when available, bytes/4 fallback)
+// and the class mix, for the "estimator class/1" footnote.
+let tokenInSum = 0;
+let tokenOutSum = 0;
+const classMix = new Map();
+let usedClassEstimator = false;
+for (const r of processed) {
+  const { inTok, outTok, cls, estimator } = recTokEst(r);
+  tokenInSum += inTok;
+  tokenOutSum += outTok;
+  if (estimator === 'class/1') usedClassEstimator = true;
+  if (cls) classMix.set(cls, (classMix.get(cls) || 0) + 1);
+}
+const classMixStr = [...classMix.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .map(([k, n]) => `${k} ${n}`)
+  .join(', ');
+const estimatorLabel = usedClassEstimator ? 'class/1' : 'bytes/4';
+
 const summary = {
   file,
-  callsProcessed: processed.length,
-  callsChanged: changed.length,
+  callsProcessed: evidence('L1-component', processed.length),
+  callsChanged: evidence('L1-component', changed.length),
   bypasses: recs.filter((r) => r.bypass).length,
-  inputBytes: inBytes,
-  outputBytes: outBytes,
-  bytesSaved: inBytes - outBytes,
-  compressionRatio: inBytes ? +(outBytes / inBytes).toFixed(3) : null,
-  estTokensSavedPerSend: est(inBytes - outBytes),
-  estNote: 'token figures are bytes/4 estimates, not provider counts; savings recur every turn the result stays in context',
-  lossy: processed.filter((r) => r.lossy).length,
-  lossless: changed.filter((r) => !r.lossy).length,
+  inputBytes: evidence('L1-component', inBytes),
+  outputBytes: evidence('L1-component', outBytes),
+  bytesSaved: evidence('L1-component', inBytes - outBytes),
+  compressionRatio: evidence('L1-component', inBytes ? +(outBytes / inBytes).toFixed(3) : null),
+  estTokensSavedPerSend: evidence('L1-component', tokenInSum - tokenOutSum),
+  estimator: estimatorLabel,
+  tokenClassMix: classMixStr || null,
+  estNote: `token figures use the ${estimatorLabel} estimator; savings recur every turn the result stays in context`,
+  lossy: evidence('L2-preservation', processed.filter((r) => r.lossy).length),
+  lossless: evidence('L2-preservation', changed.filter((r) => !r.lossy).length),
   sidecars: processed.filter((r) => r.sidecar).length,
   strategyDetections: processed.filter((r) => r.strategy && r.strategy !== 'generic').length,
-  possibleRepeatCommands: repeats.length,
+  possibleRepeatCommands: evidence('L8-trajectory', repeats.length),
   exactDuplicates: processed.filter((r) => r.dupExact).length,
   byStrategy: Object.fromEntries(groupBy(processed, 'strategy').map(([k, g]) => [k, { calls: g.n, inBytes: g.in, outBytes: g.out }])),
   byRuntime: Object.fromEntries(groupBy(processed, 'tag').map(([k, g]) => [k, { calls: g.n, inBytes: g.in, outBytes: g.out }])),
@@ -97,13 +143,13 @@ if (asJson) {
 }
 
 console.log(`trim metrics — ${file}`);
-console.log(`  calls processed:   ${num(summary.callsProcessed)} (${num(summary.callsChanged)} changed, ${num(summary.bypasses)} bypassed via TRIM_OFF)`);
-console.log(`  bytes:             ${num(inBytes)} -> ${num(outBytes)} (saved ${num(summary.bytesSaved)}, ratio ${summary.compressionRatio ?? 'n/a'})`);
-console.log(`  est. tokens saved: ~${num(summary.estTokensSavedPerSend)} per send (bytes/4 ESTIMATE, recurs each turn)`);
-console.log(`  lossy/lossless:    ${num(summary.lossy)} lossy, ${num(summary.lossless)} lossless-only`);
+console.log(`  calls processed:   ${L('L1-component', num(summary.callsProcessed.value))} (${num(summary.callsChanged.value)} changed, ${num(summary.bypasses)} bypassed via TRIM_OFF)`);
+console.log(`  bytes:             ${num(inBytes)} -> ${num(outBytes)} (saved ${L('L1-component', num(summary.bytesSaved.value))}, ratio ${L('L1-component', summary.compressionRatio.value ?? 'n/a')})`);
+console.log(`  est. tokens saved: ~${L(`L1-component, estimator ${estimatorLabel}`, num(summary.estTokensSavedPerSend.value))} per send${classMixStr ? ` (class mix: ${classMixStr})` : ''}`);
+console.log(`  lossy/lossless:    ${L('L2-preservation', num(summary.lossy.value))} lossy, ${L('L2-preservation', num(summary.lossless.value))} lossless-only`);
 console.log(`  sidecars written:  ${num(summary.sidecars)}   structured detections: ${num(summary.strategyDetections)}`);
 console.log(`  exact duplicates:  ${num(summary.exactDuplicates)} (metrics-only; output unchanged)`);
-if (summary.possibleRepeatCommands) console.log(`  ⚠ possible re-runs after lossy trims: ${num(summary.possibleRepeatCommands)} (same command within 5 min)`);
+if (summary.possibleRepeatCommands.value) console.log(`  ⚠ possible re-runs after lossy trims: ${L('L8-trajectory', num(summary.possibleRepeatCommands.value))} (same command within 5 min)`);
 const table = (title, obj) => {
   const keys = Object.keys(obj);
   if (!keys.length) return;
