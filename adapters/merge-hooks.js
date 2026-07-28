@@ -54,11 +54,15 @@ for (const [event, entries] of Object.entries(wanted)) {
   for (const entry of entries) {
     const name = entry.hooks[0].command.match(/adapters\/([\w-]+\.js)/)[1];
     // legacy installs keyed everything on '/adapters/': match by filename,
-    // falling back to any trim entry for this event with the same matcher
+    // falling back to any trim entry for this event with the same matcher.
+    // Both branches are constrained to commands under our own ROOT — a
+    // third-party hook whose path happens to contain '/adapters/' must
+    // coexist, not be silently replaced.
+    const mine = (h) => JSON.stringify(h).includes(ROOT + '/adapters/');
     const idx = list.findIndex(
       (h) =>
-        JSON.stringify(h).includes('/adapters/' + name) ||
-        (JSON.stringify(h).includes('/adapters/') && (h.matcher || '') === (entry.matcher || ''))
+        JSON.stringify(h).includes(ROOT + '/adapters/' + name) ||
+        (mine(h) && (h.matcher || '') === (entry.matcher || ''))
     );
     if (idx >= 0) list[idx] = entry;
     else list.push(entry);
