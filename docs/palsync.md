@@ -53,16 +53,56 @@ summarized text and combining its own byte counts with `meta`.
 
 With metrics enabled (`TRIM_METRICS=/path` or `touch ~/.trim-metrics.jsonl`),
 `maybeLog(tag, stats, meta, extra)` appends one JSON line per compression.
-A caller may attach an opaque block that is stored verbatim under `palsync`:
+A caller may attach an opaque block that is stored verbatim under `palsync`,
+matching the three fields PalSync ships in `.palsync.usage.json` v2 —
+`rawBytes`, `returnedBytes`, `trimmedBytes`:
 
 ```js
 maybeLog('palsync', stats, meta, {
   command: 'palsync validate',
-  palsync: { rawBytes: 120000, nativeBytes: 61000, cacheHit: false },
+  palsync: { rawBytes: 120000, returnedBytes: 61000, trimmedBytes: 48000, cacheHit: false },
 });
 ```
 
+Agent Trim is the only party that can populate `trimmedBytes` — PalSync's own
+interop doc states it never fabricates that field; it is "Agent Trim-owned
+bytes after downstream trimming; not observed or stored by PalSync."
+
 Everything stays local; there is no network path anywhere in Agent Trim.
+
+## Who owns condensation
+
+> Whoever owns the condensation contract owns the evidence guarantee. If a
+> tool result is already a digest, compressing it is compressing a summary.
+> Agent Trim's guarantee — every error/warning line survives by construction
+> — holds only over raw output. It does not transfer to another tool's digest.
+> Agent Trim therefore passes already-condensed results through untouched
+> (T2) and never adds a second omission marker.
+
+Two environment variables implement this:
+
+- `TRIM_KEEP_LAST_RE` — an additional regex (alongside the built-in
+  `^Full result: .+$`) whose match on the input's last non-empty line is
+  preserved as the literal last line of output, even after any marker Agent
+  Trim appends.
+- `TRIM_CONDENSED_PASSTHROUGH` — set to `off` to disable the already-condensed
+  passthrough and force normal compression (default: passthrough is active).
+
+## Coexistence (verified 2026-07-28)
+
+- Agent Trim installs into `~/.claude/settings.json` (user scope), events
+  `PostToolUse`, `SubagentStart`, `PostCompact`.
+- PalSync installs into `<workspace>/.claude/settings.json` (project scope),
+  event `Stop` only, additively and idempotently.
+- Claude Code **merges** `hooks` across settings scopes rather than
+  overriding — unlike most settings keys, which follow
+  managed > CLI > local > project > user precedence. Both hook sets are live
+  simultaneously. Command hooks are deduplicated by command string.
+  Source: [Claude Code hooks reference](https://code.claude.com/docs/en/hooks).
+  This is load-bearing: under override semantics, PalSync's project-scope
+  write would silently disable Agent Trim inside every PalSync workspace.
+- On Pi, Agent Trim's `tool_result` handler is scoped to `bash` results;
+  PalSync registers its own tools via `src/mcp/registerPi.js`. They compose.
 
 ## 4. Sidecar metadata companion
 

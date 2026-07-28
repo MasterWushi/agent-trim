@@ -99,3 +99,13 @@ Implications implemented: the Claude adapter treats `interrupted: true` as
 failure and otherwise sniffs failure from text (no exit code exists to read);
 all adapters pass `hostMayTruncate` for shell output so the sidecar never
 falsely claims "saved in full" for text the host already cut.
+
+**Hook merge across settings scopes (verified 2026-07-28):** Claude Code
+merges `hooks` across settings scopes (user/project/local) rather than
+applying the usual managed > CLI > local > project > user override
+precedence; both scopes' hook sets run simultaneously, deduplicated by
+command string. This is load-bearing for PalSync coexistence — see
+`docs/palsync.md` "Coexistence" section — since PalSync installs a
+project-scope `Stop` hook while Agent Trim installs user-scope
+`PostToolUse`/`SubagentStart`/`PostCompact` hooks; override semantics would
+have let PalSync's project-scope write silently disable Agent Trim.
