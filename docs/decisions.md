@@ -78,3 +78,38 @@ still resets pressure, narration provenance, duplicate state, and epoch.
 **Content hashes use SHA-256; filenames stay FNV-1a** — deliberate protocol
 split. SHA-256 makes sidecar provenance and duplicate detection collision-
 resistant. Existing content-addressed filenames stay stable for PalSync.
+
+## 0.4.0 (docs/plan-0.4.0.md) — explicitly rejected
+
+**Deterministic checks runner / `verify --changed`** — rejected. Out of scope
+for a tool/hook output compressor; a checks runner is a different product
+with different failure semantics (build orchestration, not text elision).
+
+**Context doctor** — rejected. Diagnosing *why* a session's context grew is a
+separate, stateful analysis problem; Agent Trim only compresses individual
+tool results as they pass through, and adding cross-session diagnosis would
+require retaining data this project deliberately doesn't keep.
+
+**Cache-health observer** — rejected. Requires visibility into provider-side
+prompt-cache hit/miss behavior that a local hook cannot observe; would be
+guesswork dressed as measurement.
+
+**Compaction preservation ledger** — rejected. Overlaps with the existing
+sidecar/pressure-band mechanism; a second bookkeeping system for the same
+problem adds surface area without a concrete gap it closes today.
+
+**Pluggable tokenizers (`TRIM_TOKENIZER`)** — rejected (T5). One deterministic
+class-based estimator, not a pluggable interface: a plugin surface for
+something explicitly labeled an estimate (never a provider count) buys
+flexibility nobody asked for at the cost of a new configuration axis to
+document and support.
+
+**`structuredContent` mirror-removal experiment** — rejected (T8). Requires
+proving what the host does with a rewritten MCP result when `structuredContent`
+duplicates the text block — unobservable from a local hook. Shipping it would
+be a guess about host behavior baked into code that runs on every MCP result.
+
+**End-to-end gate / 20-repository benchmark corpus** — rejected. A benchmark
+corpus at that scale is a research-infrastructure investment disproportionate
+to this release, which is about correctness and measurement (T1-T7), not a
+new compression technique needing a new evaluation harness.

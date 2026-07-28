@@ -131,10 +131,16 @@ node bin/trim-stats.js          # or: npm run stats
 ```
 
 which reports calls processed/changed, bytes saved, compression ratio,
-estimated tokens (clearly labeled bytes/4 **estimates** — real provider token
-counts aren't visible from a hook), breakdowns by strategy/runtime/command,
-sidecar, bypass, and exact-duplicate incidence, and possible re-runs after lossy trims (the
-canary that a marker failed to earn trust).
+estimated tokens, breakdowns by strategy/runtime/command, sidecar, bypass,
+and exact-duplicate incidence, and possible re-runs after lossy trims (the
+canary that a marker failed to earn trust). Every figure is printed with an
+evidence label (`[L1-component]`, `[L2-preservation]`, `[L8-trajectory]`, ...)
+so a percentage never appears as an unqualified claim — see `docs/palsync.md`.
+Token figures use a deterministic, class-based estimator
+(`bin/lib/token-estimate.js`; dense JSON/hashes/stack traces tokenize
+differently from English prose, so a flat bytes/4 divisor overstated savings
+on exactly the material trimmed hardest) — still not a provider-billed count,
+labeled `estimator class/1` in the output.
 
 `node bench/run.js` runs the committed fixture corpus (huge builds, failing
 tests, JSONL logs, adversarial prose, injection-shaped text, CRLF/unicode)
@@ -162,7 +168,7 @@ Live check: enable the debug log, ask any agent to run `seq 1 1000`, and confirm
 - In Claude Code, a Bash call that exits non-zero may route through a different hook event (`PostToolUseFailure`) that this adapter doesn't watch — failing output there passes through untouched, which is the safe direction (failures keep everything). Claude Code's Bash hook payload carries no exit code at all (`{stdout, stderr, interrupted, isImage}`), so failure detection relies on `interrupted` plus text sniffing.
 - Codex CLI hooks can only *replace the whole result with feedback text* (exit 2 + stderr) — structured field-by-field rewriting isn't supported by the runtime yet.
 - OpenCode and Pi may truncate output *before* the hook sees it (Pi: 50 KiB/2,000 lines). Host-truncated sidecars are labeled “saved as observed” and never claim completeness.
-- Estimated token figures are byte-based approximations, never provider-billed counts.
+- Estimated token figures use a deterministic class-based estimator (`bin/lib/token-estimate.js`), never provider-billed counts.
 
 Design rationale and sources: `docs/research.md` (provider caching facts, paper findings), `docs/decisions.md` (rejected proposals and why), `docs/palsync.md` (optional interop contract for embedding tools).
 
