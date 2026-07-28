@@ -25,7 +25,10 @@ const {
   isSidecarPath,
   hostCompleteness,
   netWin,
+  commandFingerprint,
+  sha256,
 } = require('../bin/trim-core.js');
+const { observe: observeRecovery } = require('../bin/lib/recovery-detect');
 const { lastUserPromptText } = require('./lib/transcript');
 const { readState, writeState } = require('../bin/lib/session-state');
 const { detectDuplicate } = require('../bin/lib/dup-detect');
@@ -75,13 +78,22 @@ process.stdin.on('end', () => {
     const evt = JSON.parse(buf);
     const command = evt.tool_input && evt.tool_input.command;
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
-    if (String(command).includes('TRIM_OFF=1')) {
-      maybeLog('claude', null, null, { command: String(command), bypass: true });
-      return process.exit(0);
-    }
-
     const promptText = lastUserPromptText(evt.transcript_path);
     const pressureState = readState(PRESSURE_KIND, evt.session_id);
+    if (String(command).includes('TRIM_OFF=1')) {
+      let recovery;
+      try {
+        recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+          commandFingerprint: commandFingerprint(command),
+          bypass: true,
+          ts: Date.now(),
+        });
+      } catch {
+        recovery = undefined;
+      }
+      maybeLog('claude', null, null, { command: String(command), bypass: true, recovery });
+      return process.exit(0);
+    }
     let scale = 1;
     let pressureBand = pressureState.pressureBand || 'low';
     if (process.env.TRIM_ADAPTIVE !== 'off') {
@@ -137,9 +149,22 @@ process.stdin.on('end', () => {
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
       const readDup = detectDuplicate(evt.session_id, file.content);
+      // T7 observe-only: never affects the trim decision above, only metrics.
+      let recovery;
+      try {
+        recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+          isSidecarRead: sideRead,
+          filePath,
+          range: evt.tool_input && `${evt.tool_input.offset || 0}-${evt.tool_input.limit || ''}`,
+          contentHash: sha256(file.content),
+          ts: Date.now(),
+        });
+      } catch {
+        recovery = undefined;
+      }
       if (!netWin(file.content, out)) {
         maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
-          command: filePath, applied: false, durMs: 0, dupExact: readDup.duplicate, dupAgeMs: readDup.ageMs,
+          command: filePath, applied: false, durMs: 0, dupExact: readDup.duplicate, dupAgeMs: readDup.ageMs, recovery,
         });
         return process.exit(0);
       }
@@ -148,6 +173,7 @@ process.stdin.on('end', () => {
         durMs: 0,
         dupExact: readDup.duplicate,
         dupAgeMs: readDup.ageMs,
+        recovery,
       });
       const hookSpecificOutput = {
         hookEventName: 'PostToolUse',
@@ -197,11 +223,26 @@ process.stdin.on('end', () => {
     }
 
     const duplicate = detectDuplicate(evt.session_id, allRaw);
+    // T7 observe-only: never affects the trim decision above, only metrics.
+    let recovery;
+    try {
+      recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+        commandFingerprint: commandFingerprint(opts.command),
+        lossy: !!(bestMeta && bestMeta.lossy),
+        sidecar: !!(bestMeta && bestMeta.sidecarPath),
+        markerKind: bestMeta && bestMeta.strategy,
+        bypass: false,
+        ts: Date.now(),
+      });
+    } catch {
+      recovery = undefined;
+    }
     const logExtra = {
       command: opts.command,
       durMs: Number(process.hrtime.bigint() - started) / 1e6,
       dupExact: duplicate.duplicate,
       dupAgeMs: duplicate.ageMs,
+      recovery,
     };
     // Only rewrite when it actually saves space; small outputs pass through,
     // but metrics still record duplicate incidence and the attempted result.

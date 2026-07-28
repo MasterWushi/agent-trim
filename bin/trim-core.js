@@ -990,6 +990,7 @@ function maybeLog(tag, stats, meta, extra) {
         ...(e.dupExact ? { dupExact: true, dupAgeMs: e.dupAgeMs ?? null } : {}),
         ...(typeof e.narrationWords === 'number' ? { narrationWords: e.narrationWords } : {}),
         ...(e.narrationExceeded ? { narrationExceeded: true } : {}),
+        ...(e.recovery ? { recovery: e.recovery } : {}),
         ...(typeof e.profile === 'string' && e.profile ? { profile: e.profile } : {}),
         // Optional caller-owned block (see docs/palsync.md): embedding tools
         // like PalSync attach their own measurements (raw bytes before their

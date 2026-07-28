@@ -108,8 +108,26 @@ const classMixStr = [...classMix.entries()]
   .join(', ');
 const estimatorLabel = usedClassEstimator ? 'class/1' : 'bytes/4';
 
+// T7 recovery candidates: correlational, not proof of cause. Grouped by
+// whether the preceding result was lossy/trimmed vs. untouched, so a within-
+// user A/B comparison is visible without a harness or provider cost.
+const recoveryRecs = recs.filter((r) => r.recovery && r.recovery.candidate);
+const afterLossy = recoveryRecs.filter((r) => r.recovery.precedingLossy);
+const afterUntouched = recoveryRecs.filter((r) => !r.recovery.precedingLossy);
+const byKind = new Map();
+for (const r of recoveryRecs) byKind.set(r.recovery.kind, (byKind.get(r.recovery.kind) || 0) + 1);
+const recovery = {
+  candidates: recoveryRecs.length,
+  total: processed.length,
+  rate: processed.length ? +(recoveryRecs.length / processed.length).toFixed(3) : null,
+  afterLossy: { n: afterLossy.length, total: processed.filter((r) => r.lossy).length },
+  afterUntouched: { n: afterUntouched.length, total: processed.filter((r) => !r.lossy).length },
+  byKind: Object.fromEntries(byKind),
+};
+
 const summary = {
   file,
+  recovery: evidence('L8-trajectory', recovery),
   callsProcessed: evidence('L1-component', processed.length),
   callsChanged: evidence('L1-component', changed.length),
   bypasses: recs.filter((r) => r.bypass).length,
@@ -150,6 +168,17 @@ console.log(`  lossy/lossless:    ${L('L2-preservation', num(summary.lossy.value
 console.log(`  sidecars written:  ${num(summary.sidecars)}   structured detections: ${num(summary.strategyDetections)}`);
 console.log(`  exact duplicates:  ${num(summary.exactDuplicates)} (metrics-only; output unchanged)`);
 if (summary.possibleRepeatCommands.value) console.log(`  ⚠ possible re-runs after lossy trims: ${L('L8-trajectory', num(summary.possibleRepeatCommands.value))} (same command within 5 min)`);
+if (recovery.total) {
+  const pct = (n, d) => (d ? ((n / d) * 100).toFixed(1) : '0.0');
+  console.log(
+    `  Recovery candidates: ${L('L8-trajectory', `${num(recovery.candidates)} of ${num(recovery.total)} (${pct(recovery.candidates, recovery.total)}%)`)}`
+  );
+  console.log(`    after lossy transform:   ${L('L8-trajectory', `${num(recovery.afterLossy.n)} of ${num(recovery.afterLossy.total)} (${pct(recovery.afterLossy.n, recovery.afterLossy.total)}%)`)}`);
+  console.log(`    after untouched result:  ${L('L8-trajectory', `${num(recovery.afterUntouched.n)} of ${num(recovery.afterUntouched.total)} (${pct(recovery.afterUntouched.n, recovery.afterUntouched.total)}%)`)}`);
+  const kindStr = Object.entries(recovery.byKind).map(([k, n]) => `${k} ${n}`).join(', ');
+  if (kindStr) console.log(`    by kind: ${kindStr}`);
+  console.log('    (correlations, not proven causes)');
+}
 const table = (title, obj) => {
   const keys = Object.keys(obj);
   if (!keys.length) return;
