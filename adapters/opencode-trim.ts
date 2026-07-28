@@ -4,7 +4,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { compress, maybeLog } = require("__TRIM_ROOT__/bin/trim-core.js")
+const { compress, maybeLog, netWin } = require("__TRIM_ROOT__/bin/trim-core.js")
 
 export const Trim: Plugin = async () => ({
   // NOTE: a throw from tool.execute.after is FAIL-CLOSED in opencode (the
@@ -21,7 +21,7 @@ export const Trim: Plugin = async () => ({
         const { out, stats, meta } = compress(output.output, { command, hostMayTruncate: true })
         maybeLog("opencode", stats, meta, { command })
         // rewrite only when it actually saves space
-        if (out && out.length < output.output.length - 32) output.output = out
+        if (netWin(output.output, out)) output.output = out
         return
       }
       // MCP tool results arrive as a raw content array instead of a string
@@ -33,7 +33,7 @@ export const Trim: Plugin = async () => ({
           if (!c || c.type !== "text" || typeof c.text !== "string" || !c.text) continue
           const { out, stats, meta } = compress(c.text, { command, hostMayTruncate: true })
           maybeLog("opencode-mcp", stats, meta, { command })
-          if (out && out.length < c.text.length - 32) c.text = out
+          if (netWin(c.text, out)) c.text = out
         }
       }
     } catch {

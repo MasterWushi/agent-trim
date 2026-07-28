@@ -24,6 +24,7 @@ const {
   isGeneratedPath,
   isSidecarPath,
   hostCompleteness,
+  netWin,
 } = require('../bin/trim-core.js');
 const { lastUserPromptText } = require('./lib/transcript');
 const { readState, writeState } = require('../bin/lib/session-state');
@@ -136,7 +137,7 @@ process.stdin.on('end', () => {
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
       const readDup = detectDuplicate(evt.session_id, file.content);
-      if (out === file.content || out.length >= file.content.length - 32) {
+      if (!netWin(file.content, out)) {
         maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
           command: filePath, applied: false, durMs: 0, dupExact: readDup.duplicate, dupAgeMs: readDup.ageMs,
         });
@@ -165,6 +166,7 @@ process.stdin.on('end', () => {
     let bestMeta = null; // contract of the dominant field, for telemetry
     let started = process.hrtime.bigint();
     let allRaw = '';
+    let allOut = '';
     if (r && typeof r === 'object' && (r.stdout !== undefined || r.stderr !== undefined || r.output !== undefined)) {
       const next = { ...r };
       let changed = false;
@@ -174,6 +176,7 @@ process.stdin.on('end', () => {
         inBytes += Buffer.byteLength(next[field]);
         const { out, meta } = compress(next[field], { ...opts, hostComplete: claudeHostComplete(next[field], false) });
         outBytes += Buffer.byteLength(out);
+        allOut += out + '\n';
         if (!bestMeta || (meta && meta.inputBytes > bestMeta.inputBytes)) bestMeta = meta;
         if (out !== next[field]) {
           next[field] = out;
@@ -188,6 +191,7 @@ process.stdin.on('end', () => {
       allRaw = original;
       const { out, meta } = compress(original, { ...opts, hostComplete: claudeHostComplete(original, false) });
       outBytes = Buffer.byteLength(out);
+      allOut = out;
       bestMeta = meta;
       if (out !== original) updated = out;
     }
@@ -201,7 +205,7 @@ process.stdin.on('end', () => {
     };
     // Only rewrite when it actually saves space; small outputs pass through,
     // but metrics still record duplicate incidence and the attempted result.
-    if (updated === undefined || outBytes >= inBytes - 32) {
+    if (updated === undefined || !netWin(allRaw, allOut)) {
       maybeLog('claude', { inBytes, outBytes: outBytes || inBytes }, bestMeta, { ...logExtra, applied: false });
       return process.exit(0);
     }

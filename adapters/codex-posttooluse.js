@@ -3,7 +3,7 @@
 // Codex CLI PostToolUse adapter. Reads hook event JSON on stdin; if the shell
 // output compresses meaningfully, exits 2 with the compressed replacement on
 // stderr (Codex substitutes it for the tool result). Otherwise exits 0.
-const { compress, maybeLog, extractExitCode, isFileDump } = require('../bin/trim-core.js');
+const { compress, maybeLog, extractExitCode, isFileDump, netWin } = require('../bin/trim-core.js');
 
 let buf = '';
 process.stdin.setEncoding('utf8');
@@ -33,7 +33,7 @@ process.stdin.on('end', () => {
       hostMayTruncate: true, // shell output; the harness may cut before we see it
     });
     maybeLog('codex', stats, meta, { command: typeof command === 'string' ? command : undefined });
-    if (!out || out.length >= original.length - 32) return process.exit(0);
+    if (!netWin(original, out)) return process.exit(0);
     process.stderr.write(out);
     process.exit(2);
   } catch {

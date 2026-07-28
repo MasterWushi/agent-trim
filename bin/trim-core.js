@@ -695,6 +695,9 @@ function countSignals(text) {
 //           metadata for adapters/telemetry, never shown to the model.
 function buildMeta(text, out, o, extra) {
   const kept = countSignals(out);
+  const { estimate } = require('./lib/token-estimate');
+  const inTok = estimate(text);
+  const outTok = estimate(out);
   return {
     changed: out !== text,
     strategy: extra.strategy,
@@ -711,7 +714,28 @@ function buildMeta(text, out, o, extra) {
     runtime: o.runtime || null,
     profile: o._profile || null,
     reason: extra.reason,
+    inputTokenEstimate: inTok.tokens,
+    outputTokenEstimate: outTok.tokens,
+    tokenClass: outTok.cls,
+    estimator: 'class/1',
   };
+}
+
+// Single net-win decision for every adapter. A candidate must be smaller in
+// bytes AND in estimated tokens: dense output can shrink in bytes while
+// tokenizing no cheaper, and the marker we add is itself tokens.
+function netWin(inText, outText) {
+  try {
+    if (outText === undefined || outText === null) return false;
+    const byteWin = Buffer.byteLength(inText) - Buffer.byteLength(outText);
+    if (!(byteWin >= 32)) return false;
+    const { estimate } = require('./lib/token-estimate');
+    const tokenWin = estimate(inText).tokens - estimate(outText).tokens;
+    if (!Number.isFinite(tokenWin)) return false;
+    return tokenWin >= Number(process.env.TRIM_NET_WIN_TOKENS || 24);
+  } catch {
+    return false; // fail closed on the *decision*: keep the original text
+  }
 }
 
 // Results that are already a digest produced by another tool. Compressing a
@@ -997,6 +1021,7 @@ module.exports = {
   protectedTrailer,
   KEEP_LAST_RE,
   alreadyCondensed,
+  netWin,
 };
 
 if (require.main === module) {

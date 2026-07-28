@@ -10,6 +10,7 @@ const {
   isSidecarPath,
   pressureScale,
   cheapHash,
+  netWin,
 } = require('../../bin/trim-core');
 const { detectDuplicate, clearDuplicates } = require('../../bin/lib/dup-detect');
 const { readState: readGenericState, writeState: writeGenericState, statePath } = require('../../bin/lib/session-state');
@@ -129,7 +130,7 @@ function handleToolResult(event, priorState, env = {}) {
     inBytes += Buffer.byteLength(part.text);
     outBytes += Buffer.byteLength(result.out);
     if (!bestMeta || (result.meta && result.meta.inputBytes > bestMeta.inputBytes)) bestMeta = result.meta;
-    if (result.out.length < part.text.length - 32) {
+    if (netWin(part.text, result.out)) {
       mapped.push({ ...part, text: result.out });
       changed = true;
     } else mapped.push(part);
