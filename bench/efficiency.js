@@ -8,7 +8,11 @@ const path = require('path');
 const { compress } = require('../bin/trim-core');
 
 const check = process.argv.includes('--check');
-const fixtures = fs.readdirSync(path.join(__dirname, '..', 'test', 'fixtures')).filter((name) => !name.startsWith('.')).sort();
+const fixturesDir = path.join(__dirname, '..', 'test', 'fixtures');
+const fixtures = fs
+  .readdirSync(fixturesDir)
+  .filter((name) => !name.startsWith('.') && fs.statSync(path.join(fixturesDir, name)).isFile())
+  .sort();
 const runtimes = {
   claude: { runtime: 'claude', hostComplete: true },
   pi: { runtime: 'pi', hostComplete: true },

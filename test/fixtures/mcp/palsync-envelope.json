@@ -1,0 +1,9 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"diagnostics\":[{\"severity\":\"error\",\"code\":\"E1\",\"message\":\"x\",\"occurrences\":3}]}\nFull result: .palsync/artifacts/ab12.json"
+    }
+  ],
+  "isError": false
+}

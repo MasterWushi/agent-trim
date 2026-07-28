@@ -186,6 +186,45 @@ process.stdin.on('end', () => {
       return process.exit(0);
     }
 
+    // T8 — MCP coverage, observe mode only. Never fires under the installed
+    // ^(Bash|Read)$ matcher default; only relevant if a user has broadened
+    // their own matcher to include mcp__* tools. See adapters/lib/mcp-result.js.
+    if (typeof evt.tool_name === 'string' && /^mcp__/.test(evt.tool_name)) {
+      const mcpMode = process.env.TRIM_MCP || 'observe';
+      if (mcpMode === 'off') return process.exit(0);
+      let allowRe;
+      let denyRe;
+      try {
+        allowRe = process.env.TRIM_MCP_ALLOW_RE ? new RegExp(process.env.TRIM_MCP_ALLOW_RE) : undefined;
+      } catch {
+        allowRe = undefined;
+      }
+      try {
+        denyRe = process.env.TRIM_MCP_DENY_RE ? new RegExp(process.env.TRIM_MCP_DENY_RE) : undefined;
+      } catch {
+        denyRe = undefined;
+      }
+      const { processMcpResult } = require('./lib/mcp-result');
+      const { out: mcpOut, applied, observed } = processMcpResult(r, {
+        toolName: evt.tool_name,
+        mode: mcpMode,
+        allowRe,
+        denyRe,
+        compressOpts: { ...opts, hostMayTruncate: false },
+      });
+      maybeLog('claude-mcp', null, null, {
+        command: evt.tool_name,
+        applied,
+        mcpObserved: observed.length,
+        mcpMode,
+      });
+      if (!applied) return process.exit(0);
+      process.stdout.write(
+        JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: mcpOut } })
+      );
+      return process.exit(0);
+    }
+
     let updated;
     let inBytes = 0;
     let outBytes = 0;
