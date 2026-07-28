@@ -348,6 +348,15 @@ function cheapHash(s) {
   return (h >>> 0).toString(16);
 }
 
+// First token + hash of a normalized command — never the raw command text.
+// Used both for the metrics `cmdWord`/`cmdHash` fields and (T7) recovery
+// detection's command-identity comparisons. Field names are frozen: existing
+// metrics files and bin/trim-stats.js depend on them.
+function commandFingerprint(command) {
+  if (typeof command !== 'string' || !command) return null;
+  return { cmdWord: command.trim().split(/\s+/, 1)[0].slice(0, 32), cmdHash: cheapHash(command) };
+}
+
 function stripAnsi(text) {
   return String(text || '').replace(ANSI_RE, '');
 }
@@ -974,9 +983,7 @@ function maybeLog(tag, stats, meta, extra) {
           : stats
             ? { inBytes: stats.inBytes, outBytes: stats.outBytes }
             : {}),
-        ...(typeof e.command === 'string' && e.command
-          ? { cmdWord: e.command.trim().split(/\s+/, 1)[0].slice(0, 32), cmdHash: cheapHash(e.command) }
-          : {}),
+        ...(commandFingerprint(e.command) || {}),
         ...(e.bypass ? { bypass: true } : {}),
         ...(e.applied === false ? { applied: false } : {}),
         ...(typeof e.durMs === 'number' ? { durMs: +e.durMs.toFixed(3) } : {}),
@@ -1026,6 +1033,7 @@ module.exports = {
   KEEP_LAST_RE,
   alreadyCondensed,
   netWin,
+  commandFingerprint,
 };
 
 if (require.main === module) {
