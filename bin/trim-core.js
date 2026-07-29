@@ -753,9 +753,31 @@ function netWin(inText, outText) {
 // ours. Pass through, record it, do nothing. Our own `[trim hook: ...]` /
 // `[trim digest: ...]` markers are excluded — a sidecar re-read of our own
 // output is not a foreign digest.
+// A protected trailer on its own does NOT mean "already condensed" — it means
+// "this last line is load-bearing", which is T1's job, not T2's. Digest-ness is
+// a property of the BODY. PalSync's `serializeEnvelope()` returns
+// `JSON.stringify(envelope) + "\n" + trailer`, so the body being JSON is the
+// actual signal: line-capping a JSON body destroys parseability whether it is
+// one line or pretty-printed across many, and that body is already a digest
+// (`collapseFindings()` did the semantic grouping). A body that is ordinary
+// multi-line log text is not a digest, however it ends — it gets compressed,
+// with the trailer re-emitted last.
+function condensedEnvelope(text) {
+  if (!protectedTrailer(text)) return false;
+  const lines = text.split('\n');
+  let i = lines.length - 1;
+  while (i >= 0 && !lines[i].trim()) i--; // the trailer line protectedTrailer found
+  const body = lines.slice(0, i).join('\n').trim();
+  if (!body) return true; // trailer alone: nothing to compress
+  return /^[[{]/.test(body); // JSON envelope — capping it breaks parseability
+}
+
 function alreadyCondensed(text) {
   if (process.env.TRIM_CONDENSED_PASSTHROUGH === 'off') return false;
-  if (protectedTrailer(text)) return true; // artifact-pointer trailer
+  if (condensedEnvelope(text)) return true; // digest envelope behind an artifact pointer
+  // Order matters: a non-JSON body with a trailer now reaches this check, where
+  // before the bare-trailer short-circuit hid it. A body carrying someone
+  // else's marker is still a digest and must still pass through.
   if (/^\[(?!trim\b)[a-z][\w-]* (hook|digest):/m.test(text)) return true; // foreign marker
   return false;
 }
@@ -792,10 +814,10 @@ function compress(text, opts) {
   // 4. collapse 2+ blank lines to one
   s = s.replace(/\n{3,}/g, '\n\n');
   const inputLines = s.split('\n').length;
-  // Defence in depth only: any text with a protected trailer is caught by
-  // alreadyCondensed() above, so this is reachable solely under
-  // TRIM_CONDENSED_PASSTHROUGH=off. Kept so the "ends with" contract holds
-  // even if the passthrough is disabled.
+  // Live on the normal path: a trailer-bearing result with a non-JSON body
+  // compresses here, and the "ends with <trailer>" contract is honoured by
+  // re-emitting the line after any marker we add. JSON-bodied envelopes never
+  // reach this point — condensedEnvelope() passed them through above.
   const trailer = protectedTrailer(text);
   const done = (out, extra) => {
     if (trailer && out !== text) {
@@ -1042,6 +1064,7 @@ module.exports = {
   protectedTrailer,
   KEEP_LAST_RE,
   alreadyCondensed,
+  condensedEnvelope,
   netWin,
   commandFingerprint,
 };

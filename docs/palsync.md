@@ -79,6 +79,20 @@ Everything stays local; there is no network path anywhere in Agent Trim.
 > Agent Trim therefore passes already-condensed results through untouched
 > (T2) and never adds a second omission marker.
 
+Digest-ness is a property of the **body**, not of the trailer. A
+`Full result: <path>` line means "this last line is load-bearing" — which is
+T1's job. The passthrough fires when the body behind that trailer is a JSON
+envelope, matching `serializeEnvelope()`'s
+`JSON.stringify(envelope) + "\n" + trailer`: line-capping a JSON body destroys
+parseability whether it is one line or pretty-printed, and that body is already
+a digest (`collapseFindings()` grouped it). A body that is ordinary multi-line
+log text is *not* a digest however it ends — it compresses normally, with the
+trailer re-emitted as the last line.
+
+So for a PalSync envelope both guarantees hold, by different mechanisms:
+passthrough keeps the JSON intact, and T1 keeps the trailer last for any tool
+that emits one after a plain log.
+
 Two environment variables implement this:
 
 - `TRIM_KEEP_LAST_RE` — an additional regex (alongside the built-in

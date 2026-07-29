@@ -274,12 +274,12 @@ assert.strictEqual(compress('').out, '');
   fs.rmSync(mPath, { force: true });
 }
 
-// T1: protected trailer stays the last line
-// (forced through TRIM_CONDENSED_PASSTHROUGH=off: T2's own passthrough would
-// otherwise short-circuit any trailer-bearing input before it reaches the
-// cap — see the T2 block below. T1 remains defence-in-depth for that case.)
+// T1: protected trailer stays the last line.
+// Runs on the DEFAULT path with no env override — a log-shaped (non-JSON) body
+// ending in a protected trailer is not a digest, so it compresses normally and
+// the trailer is re-emitted after the marker. Only JSON-bodied envelopes are
+// passed through by T2 (see condensedEnvelope).
 {
-  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
   const big = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
   const { out } = compress(big);
@@ -288,7 +288,7 @@ assert.strictEqual(compress('').out, '');
   const markerIdx = out.indexOf('[trim hook:');
   const trailerIdx = out.lastIndexOf(trailer);
   assert.ok(markerIdx !== -1 && markerIdx < trailerIdx, 'marker present before trailer');
-  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
+  assert.ok(Buffer.byteLength(out) < Buffer.byteLength(big), 'log-shaped body is still compressed');
 }
 
 // no matching trailer -> byte-identical to current (pre-T1) behaviour
@@ -306,7 +306,6 @@ assert.strictEqual(compress('').out, '');
 
 // trailer appears twice in input -> output ends with exactly one copy
 {
-  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
   const big =
     trailer +
@@ -319,7 +318,6 @@ assert.strictEqual(compress('').out, '');
   assert.strictEqual(count, 1, 'exactly one trailer copy survives');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'the surviving copy is last');
-  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
 }
 
 // input where the trailer is the only line -> unchanged
@@ -332,7 +330,6 @@ assert.strictEqual(compress('').out, '');
 {
   delete require.cache[require.resolve('../bin/trim-core.js')];
   process.env.TRIM_KEEP_LAST_RE = '^CUSTOM: .+$';
-  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const { compress: compress2, protectedTrailer: protectedTrailer2 } = require('../bin/trim-core.js');
   assert.ok(protectedTrailer2('a\nCUSTOM: keep-me'), 'custom pattern recognized');
   assert.ok(protectedTrailer2('a\nFull result: x'), 'default pattern still recognized alongside custom');
@@ -341,7 +338,6 @@ assert.strictEqual(compress('').out, '');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], 'CUSTOM: keep-me', 'custom trailer kept last');
   delete process.env.TRIM_KEEP_LAST_RE;
-  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
   delete require.cache[require.resolve('../bin/trim-core.js')];
 }
 
@@ -349,7 +345,6 @@ assert.strictEqual(compress('').out, '');
 {
   delete require.cache[require.resolve('../bin/trim-core.js')];
   process.env.TRIM_KEEP_LAST_RE = '([unclosed';
-  process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
   const { compress: compress3, protectedTrailer: protectedTrailer3 } = require('../bin/trim-core.js');
   assert.ok(protectedTrailer3('a\nFull result: x'), 'default pattern still protected despite invalid custom regex');
   const trailer = 'Full result: .palsync/artifacts/ab12.json';
@@ -358,7 +353,6 @@ assert.strictEqual(compress('').out, '');
   const nonEmpty = out.split('\n').filter((l) => l.trim());
   assert.strictEqual(nonEmpty[nonEmpty.length - 1], trailer, 'default trailer kept despite invalid TRIM_KEEP_LAST_RE');
   delete process.env.TRIM_KEEP_LAST_RE;
-  delete process.env.TRIM_CONDENSED_PASSTHROUGH;
   delete require.cache[require.resolve('../bin/trim-core.js')];
 }
 
@@ -384,11 +378,50 @@ assert.strictEqual(compress('').out, '');
   const ours = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + '\n[trim hook: full 2000-line output saved to /tmp/x.txt — read with offset/limit if needed]';
   assert.ok(!alreadyCondensed(ours), 'our own trim hook marker is not treated as foreign');
 
+  // The env override needs a fixture that (a) passes through by default and
+  // (b) is actually compressible once the passthrough is disabled. A log-shaped
+  // body fails (a) — it now compresses either way. The single-line `envelope`
+  // above fails (b): one 42KB line gives a line-oriented pipeline nothing to
+  // remove, which is Appendix A1's whole argument. A pretty-printed JSON body
+  // satisfies both.
+  const prettyEnvelope =
+    JSON.stringify({ findings: Array.from({ length: 300 }, (_, i) => ({ code: `E${i}`, msg: 'x'.repeat(30) })) }, null, 2) +
+    `\n${trailer}`;
+  assert.strictEqual(compress(prettyEnvelope).out, prettyEnvelope, 'pretty JSON envelope passes through by default');
   process.env.TRIM_CONDENSED_PASSTHROUGH = 'off';
-  const capFixture = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
-  const resumed = compress(capFixture).out;
-  assert.notStrictEqual(resumed, capFixture, 'TRIM_CONDENSED_PASSTHROUGH=off resumes normal compression');
+  const resumed = compress(prettyEnvelope).out;
+  assert.notStrictEqual(resumed, prettyEnvelope, 'TRIM_CONDENSED_PASSTHROUGH=off resumes normal compression');
   delete process.env.TRIM_CONDENSED_PASSTHROUGH;
+}
+
+// T2/A2 guarantee, stated as its own assertion rather than left incidental:
+// digest-ness is a property of the BODY, not of the trailer.
+{
+  const { condensedEnvelope } = require('../bin/trim-core.js');
+  const trailer = 'Full result: .palsync/artifacts/ab12.json';
+  // JSON body big enough to cap -> passthrough, so the envelope stays parseable
+  const jsonBody = JSON.stringify({ diagnostics: Array.from({ length: 400 }, (_, i) => ({ severity: 'error', code: `E${i}`, message: 'x'.repeat(40), occurrences: i })) });
+  const jsonEnvelope = `${jsonBody}\n${trailer}`;
+  assert.ok(Buffer.byteLength(jsonEnvelope) > 15000, 'past the sidecar threshold');
+  const j = compress(jsonEnvelope);
+  assert.ok(condensedEnvelope(jsonEnvelope), 'JSON body + trailer is a digest envelope');
+  assert.strictEqual(j.out, jsonEnvelope, 'JSON envelope byte-identical: parseability preserved');
+  assert.strictEqual(j.meta.strategy, 'passthrough-condensed');
+
+  // pretty-printed JSON body spans many lines and must still pass through
+  const pretty = `${JSON.stringify(JSON.parse(jsonBody), null, 2)}\n${trailer}`;
+  assert.ok(pretty.split('\n').length > 300, 'pretty body is multi-line');
+  assert.strictEqual(compress(pretty).out, pretty, 'pretty-printed envelope also passes through');
+
+  // log-shaped body is NOT a digest, however it ends -> compressed, trailer last
+  const logEnvelope = 'installed package-' + Array.from({ length: 2000 }, (_, i) => i).join('\ninstalled package-') + `\n${trailer}`;
+  assert.ok(!condensedEnvelope(logEnvelope), 'log body + trailer is not a digest envelope');
+  const l = compress(logEnvelope);
+  assert.notStrictEqual(l.meta.strategy, 'passthrough-condensed', 'log-shaped body is compressed');
+
+  // a log body carrying someone else's marker is still a digest
+  const marked = `plain log line\n[palsync digest: 12 grouped]\nmore log\n${trailer}`;
+  assert.ok(alreadyCondensed(marked), 'foreign marker still wins on a non-JSON body');
 }
 
 console.log('core.test.js: all assertions passed');
