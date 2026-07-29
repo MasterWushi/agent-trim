@@ -83,33 +83,64 @@ To remove everything:
 
 ## Updating
 
+**One command, from your clone:**
+
 ```bash
-npm run update        # git pull --ff-only && npm test && ./install.sh
-./install.sh --check  # or: npm run doctor — report drift, change nothing
+npm run update
 ```
 
-`git pull` is almost the whole story, by design: hook commands and every
-`require` resolve to absolute paths inside your clone, so all four agents run
-your working tree. Pull and they are all updated at once, no reinstall.
+That is `git pull --ff-only && npm test && ./install.sh` — pull, prove the suite
+still passes, re-wire anything that needs it, then print a drift report. Run it
+whenever you want the latest; it is safe to run when already current.
 
-Two things a pull genuinely cannot update, because they are copies rather than
-references:
+**To check without changing anything:**
 
-- **The rendered harness wrappers** (`~/.config/opencode/plugins/trim.ts`,
-  `~/.pi/agent/extensions/trim.ts`). Both are kept deliberately thin — they
-  `require` their behaviour from `adapters/lib/*-runtime.js` in the repo — so
-  they change across releases only when a host's own API wiring changes, which
-  is rare. Re-run `./install.sh` when it does.
-- **The style block** appended to each agent's instructions file. `install.sh`
-  skips any file already carrying the `<!-- trim:style:start -->` marker, so
-  edits to `style/TERSE.md` never reach an existing install. Delete the block
-  and re-run to refresh it.
+```bash
+./install.sh --check      # same as: npm run doctor
+```
 
-`./install.sh --check` reports both, plus two wiring faults worth catching: a
-harness you installed after trim (present but never wired) and hooks still
-pointing at an *older clone* of this repo — the one drift no amount of pulling
-in this directory will fix. It exits non-zero on drift, so it can gate a
-script, and writes nothing. `install.sh` runs it automatically when it finishes.
+Reports every difference between this repo and what your agents actually run,
+writes nothing, and exits non-zero if anything drifted — so you can gate a
+script on it. A clean report looks like this:
+
+```
+trim doctor — /path/to/agent-trim
+  ok    claude         .claude/settings.json points at this repo
+  ok    pi             .pi/agent/extensions/trim.ts matches adapters/pi-trim.ts
+  ...
+everything your agents run matches this repo. `git pull` keeps it that way.
+```
+
+### Why a pull is usually enough
+
+Hook commands and every `require` resolve to absolute paths **inside your
+clone** — `node /path/to/agent-trim/adapters/claude-posttooluse.js`. Your agents
+execute your working tree directly, so one `git pull` updates all four at once.
+There is no copy of the compressor anywhere else on disk to go stale.
+
+### The three things a pull cannot fix
+
+| Drift | Why | Fix |
+|---|---|---|
+| Rendered harness wrappers (`~/.config/opencode/plugins/trim.ts`, `~/.pi/agent/extensions/trim.ts`) | `install.sh` **copies** these, substituting the repo path. Both are kept thin — they `require` their behaviour from `adapters/lib/*-runtime.js` in the repo — so they only change when a host's own plugin API does. | `./install.sh` |
+| Style block in `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, … | `append_style` skips any file already carrying the `<!-- trim:style:start -->` marker, so edits to `style/TERSE.md` never reach an existing install. | delete the block, then `./install.sh` |
+| Hooks pointing at an **older clone** | Nothing you pull *in this directory* can change a hook that names a different path. | `./install.sh` |
+
+The doctor also flags a harness you installed *after* trim: `install.sh` only
+wires directories that exist when it runs, so a newly added agent sits unwired
+with no other signal.
+
+### Verifying it is actually working
+
+The doctor compares files. To confirm the running system compresses, enable the
+debug log and watch a real call:
+
+```bash
+touch ~/.trim-debug        # enable
+# ask any agent to run: seq 1 1000
+tail ~/.trim-debug         # 2026-07-29T03:35:00.360Z claude 22389 -> 1553
+rm ~/.trim-debug           # disable
+```
 
 ## How it plugs into each agent
 
