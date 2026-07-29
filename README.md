@@ -136,6 +136,11 @@ and exact-duplicate incidence, and possible re-runs after lossy trims (the
 canary that a marker failed to earn trust). Every figure is printed with an
 evidence label (`[L1-component]`, `[L2-preservation]`, `[L8-trajectory]`, ...)
 so a percentage never appears as an unqualified claim — see `docs/palsync.md`.
+`--json` consumers, note the 0.4.0 shape change: labelled figures are now
+`{ value, evidence }` objects rather than bare numbers (`.bytesSaved` →
+`.bytesSaved.value`). The `byStrategy` / `byRuntime` / `byCommand` tables are
+unchanged.
+
 Token figures use a deterministic, class-based estimator
 (`bin/lib/token-estimate.js`; dense JSON/hashes/stack traces tokenize
 differently from English prose, so a flat bytes/4 divisor overstated savings

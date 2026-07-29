@@ -1,6 +1,6 @@
 {
   "name": "agent-trim",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Deterministic, model-free compression of coding-agent tool output. Zero dependencies.",
   "main": "bin/trim-core.js",
   "license": "MIT",

@@ -6,6 +6,12 @@
 
 const DIVISORS = { dense: 2.0, code: 2.6, mixed: 3.2, prose: 3.8 };
 
+// Names the divisor set above, and lives next to it deliberately: the label's
+// only job is to say which numbers produced a figure, so a reader comparing
+// metrics of different vintages can tell whether they are comparable. Bump it
+// whenever DIVISORS or classify() change.
+const ESTIMATOR = 'class/1';
+
 function classify(text) {
   const sample = text.length > 65536 ? text.slice(0, 65536) : text;
   if (!sample) return 'mixed';
@@ -30,4 +36,4 @@ function estimate(text) {
   return { tokens: Math.ceil(text.length / DIVISORS[cls]), cls };
 }
 
-module.exports = { estimate, classify, DIVISORS };
+module.exports = { estimate, classify, DIVISORS, ESTIMATOR };

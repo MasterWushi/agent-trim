@@ -704,7 +704,7 @@ function countSignals(text) {
 //           metadata for adapters/telemetry, never shown to the model.
 function buildMeta(text, out, o, extra) {
   const kept = countSignals(out);
-  const { estimate } = require('./lib/token-estimate');
+  const { estimate, ESTIMATOR } = require('./lib/token-estimate');
   const inTok = estimate(text);
   const outTok = estimate(out);
   return {
@@ -726,7 +726,7 @@ function buildMeta(text, out, o, extra) {
     inputTokenEstimate: inTok.tokens,
     outputTokenEstimate: outTok.tokens,
     tokenClass: outTok.cls,
-    estimator: 'class/1',
+    estimator: ESTIMATOR,
   };
 }
 
