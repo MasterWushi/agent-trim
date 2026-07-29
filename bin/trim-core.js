@@ -792,6 +792,10 @@ function compress(text, opts) {
   // 4. collapse 2+ blank lines to one
   s = s.replace(/\n{3,}/g, '\n\n');
   const inputLines = s.split('\n').length;
+  // Defence in depth only: any text with a protected trailer is caught by
+  // alreadyCondensed() above, so this is reachable solely under
+  // TRIM_CONDENSED_PASSTHROUGH=off. Kept so the "ends with" contract holds
+  // even if the passthrough is disabled.
   const trailer = protectedTrailer(text);
   const done = (out, extra) => {
     if (trailer && out !== text) {
@@ -991,6 +995,11 @@ function maybeLog(tag, stats, meta, extra) {
         ...(typeof e.narrationWords === 'number' ? { narrationWords: e.narrationWords } : {}),
         ...(e.narrationExceeded ? { narrationExceeded: true } : {}),
         ...(e.recovery ? { recovery: e.recovery } : {}),
+        // T8 observe-mode counterfactual: what an MCP transform WOULD have
+        // saved. Deliberately nested so its byte counts can never be summed
+        // into the report's headline `inBytes`/`outBytes` — a never-applied
+        // trim must not inflate reported savings.
+        ...(e.mcp && typeof e.mcp === 'object' ? { mcp: e.mcp } : {}),
         ...(typeof e.profile === 'string' && e.profile ? { profile: e.profile } : {}),
         // Optional caller-owned block (see docs/palsync.md): embedding tools
         // like PalSync attach their own measurements (raw bytes before their

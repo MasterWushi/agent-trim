@@ -212,11 +212,20 @@ process.stdin.on('end', () => {
         denyRe,
         compressOpts: { ...opts, hostMayTruncate: false },
       });
+      // Observe mode is only worth anything if the counterfactual is recorded.
+      // Aggregate into the nested `mcp` block: `stats`/`meta` stay null so
+      // these bytes never join the report's headline savings totals.
       maybeLog('claude-mcp', null, null, {
         command: evt.tool_name,
         applied,
-        mcpObserved: observed.length,
-        mcpMode,
+        mcp: {
+          mode: mcpMode,
+          blocks: observed.length,
+          wouldInBytes: observed.reduce((s, b) => s + (b.inBytes || 0), 0),
+          wouldOutBytes: observed.reduce((s, b) => s + (b.outBytes || 0), 0),
+          lossy: observed.some((b) => b.lossy),
+          strategies: [...new Set(observed.map((b) => b.strategy).filter(Boolean))],
+        },
       });
       if (!applied) return process.exit(0);
       process.stdout.write(

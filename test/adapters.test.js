@@ -86,6 +86,49 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   assert.ok(typeof rec.durMs === 'number');
   fs.rmSync(metrics, { force: true });
 }
+// T8 observe mode records the counterfactual WITHOUT inflating reported savings
+{
+  const metrics = path.join(os.tmpdir(), `trim-mcp-metrics-${process.pid}.jsonl`);
+  const huge = Array.from({ length: 1200 }, (_, i) => `mcp row ${i} ${'y'.repeat(i % 7)}`).join('\n');
+  const evt = {
+    tool_name: 'mcp__demo__query',
+    tool_input: {},
+    tool_response: { content: [{ type: 'text', text: huge }] },
+    session_id: 'mcp-observe',
+  };
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_METRICS: metrics });
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.stdout, '', 'observe mode returns no replacement');
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.tag, 'claude-mcp');
+  assert.strictEqual(rec.applied, false, 'observe mode never applies');
+  assert.strictEqual(rec.mcp.mode, 'observe');
+  assert.ok(rec.mcp.blocks >= 1, 'at least one text block observed');
+  assert.ok(rec.mcp.wouldOutBytes < rec.mcp.wouldInBytes, 'counterfactual saving recorded');
+  // The counterfactual must not reach the headline totals: a never-applied
+  // trim reported as savings is exactly the misreporting T6 exists to stop.
+  const stats = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'trim-stats.js'), metrics, '--json'], {
+    encoding: 'utf8', env: { ...process.env }, timeout: 10000,
+  });
+  const summary = JSON.parse(stats.stdout);
+  assert.strictEqual(summary.bytesSaved.value, 0, 'observe-mode bytes excluded from reported savings');
+  assert.strictEqual(summary.inputBytes.value, 0, 'observe-mode bytes excluded from input totals');
+  fs.rmSync(metrics, { force: true });
+}
+// TRIM_MCP=off → no metrics record at all
+{
+  const metrics = path.join(os.tmpdir(), `trim-mcp-off-${process.pid}.jsonl`);
+  const evt = {
+    tool_name: 'mcp__demo__query',
+    tool_input: {},
+    tool_response: { content: [{ type: 'text', text: bigOut }] },
+    session_id: 'mcp-off',
+  };
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_METRICS: metrics, TRIM_MCP: 'off' });
+  assert.strictEqual(r.stdout, '');
+  assert.ok(!fs.existsSync(metrics), 'TRIM_MCP=off writes nothing');
+  fs.rmSync(metrics, { force: true });
+}
 // unavailable transcript preserves the prior pressure band
 {
   const id = `pressure-preserve-${process.pid}`;
