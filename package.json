@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": "github:MasterWushi/agent-trim",
   "scripts": {
-    "test": "node test/core.test.js && node test/profiles.test.js && node test/signal.test.js && node test/strategies.test.js && node test/pi-runtime.test.js && node test/dup-detect.test.js && node test/claude-hooks.test.js && node test/adapters.test.js && node test/install.test.js && node test/merge-hooks.test.js && node test/token-estimate.test.js && node test/stats.test.js && node test/recovery-detect.test.js && node test/mcp-result.test.js && node test/doctor.test.js && node test/bench.test.js",
+    "test": "node test/core.test.js && node test/profiles.test.js && node test/signal.test.js && node test/strategies.test.js && node test/pi-runtime.test.js && node test/dup-detect.test.js && node test/claude-hooks.test.js && node test/adapters.test.js && node test/install.test.js && node test/merge-hooks.test.js && node test/token-estimate.test.js && node test/stats.test.js && node test/recovery-detect.test.js && node test/mcp-result.test.js && node test/doctor.test.js && node test/opencode-runtime.test.js && node test/bench.test.js",
     "bench": "node bench/run.js",
     "stats": "node bin/trim-stats.js",
     "doctor": "node bin/trim-doctor.js",
