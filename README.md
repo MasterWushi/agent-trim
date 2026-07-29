@@ -81,6 +81,36 @@ To remove everything:
 
 **Codex users:** the first interactive `codex` run after installing will ask you to trust the new hook — approve it once.
 
+## Updating
+
+```bash
+npm run update        # git pull --ff-only && npm test && ./install.sh
+./install.sh --check  # or: npm run doctor — report drift, change nothing
+```
+
+`git pull` is almost the whole story, by design: hook commands and every
+`require` resolve to absolute paths inside your clone, so all four agents run
+your working tree. Pull and they are all updated at once, no reinstall.
+
+Two things a pull genuinely cannot update, because they are copies rather than
+references:
+
+- **The rendered harness wrappers** (`~/.config/opencode/plugins/trim.ts`,
+  `~/.pi/agent/extensions/trim.ts`). Both are kept deliberately thin — they
+  `require` their behaviour from `adapters/lib/*-runtime.js` in the repo — so
+  they change across releases only when a host's own API wiring changes, which
+  is rare. Re-run `./install.sh` when it does.
+- **The style block** appended to each agent's instructions file. `install.sh`
+  skips any file already carrying the `<!-- trim:style:start -->` marker, so
+  edits to `style/TERSE.md` never reach an existing install. Delete the block
+  and re-run to refresh it.
+
+`./install.sh --check` reports both, plus two wiring faults worth catching: a
+harness you installed after trim (present but never wired) and hooks still
+pointing at an *older clone* of this repo — the one drift no amount of pulling
+in this directory will fix. It exits non-zero on drift, so it can gate a
+script, and writes nothing. `install.sh` runs it automatically when it finishes.
+
 ## How it plugs into each agent
 
 One shared compressor (`bin/trim-core.js`), four thin adapters using each agent's official extension point:

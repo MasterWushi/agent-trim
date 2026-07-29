@@ -5,9 +5,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+command -v node >/dev/null || { echo "node required"; exit 1; }
+
+# --check reports drift between this repo and what the agents actually run,
+# and changes nothing. Kept here so there is one entry point to remember.
+if [[ "${1:-}" == "--check" ]]; then
+  exec node "$ROOT/bin/trim-doctor.js" "${@:2}"
+fi
+
 STYLE=1
 [[ "${1:-}" == "--no-style" ]] && STYLE=0
-command -v node >/dev/null || { echo "node required"; exit 1; }
 
 BK="$ROOT/backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BK"
@@ -68,3 +75,5 @@ if [[ -d "$HOME/.pi/agent" ]]; then
 fi
 
 echo "done. verify: touch ~/.trim-debug, run any harness on a long command, check the log. rm ~/.trim-debug after."
+echo
+node "$ROOT/bin/trim-doctor.js" || true
