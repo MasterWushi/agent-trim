@@ -23,6 +23,7 @@ const {
   isLogPath,
   isGeneratedPath,
   isSidecarPath,
+  isExactSidecarRange,
   hostCompleteness,
   netWin,
   netWinTotals,
@@ -146,14 +147,6 @@ process.stdin.on('end', () => {
       if (!file || typeof file.content !== 'string') return process.exit(0);
       const sideRead = isSidecarPath(filePath);
       if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return process.exit(0);
-      const { out, meta } = compress(file.content, {
-        ...opts,
-        isDump: true, // treat like failures: keep more, signal-anchored
-        hostMayTruncate: undefined, // Read arrives complete
-        hostComplete: true,
-        noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
-      });
-      if (!meta) return process.exit(0);
       const readDup = observed ? detectDuplicate(evt.session_id, file.content) : { duplicate: false, ageMs: null };
       // T7 observe-only: never affects the trim decision above, only metrics.
       let recovery;
@@ -177,6 +170,26 @@ process.stdin.on('end', () => {
         dupAgeMs: readDup.ageMs,
         recovery,
       };
+      // A bounded read of a sidecar is the agent retrieving the exact evidence
+      // the digest hid: return that range untouched, or it is re-elided into
+      // another reread. Unbounded or oversized ranges keep the normal cap.
+      if (isExactSidecarRange(filePath, evt.tool_input, file.content)) {
+        maybeLog(
+          'claude-read',
+          { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(file.content) },
+          null,
+          { ...logExtra, applied: false, verbatim: true }
+        );
+        return process.exit(0);
+      }
+      const { out, meta } = compress(file.content, {
+        ...opts,
+        isDump: true, // treat like failures: keep more, signal-anchored
+        hostMayTruncate: undefined, // Read arrives complete
+        hostComplete: true,
+        noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
+      });
+      if (!meta) return process.exit(0);
       if (!netWin(file.content, out, meta)) {
         maybeLog('claude-read', { inBytes: meta.inputBytes, outBytes: meta.inputBytes }, meta, { ...logExtra, applied: false });
         return process.exit(0);

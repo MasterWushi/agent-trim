@@ -8,6 +8,7 @@ const {
   isLogPath,
   isGeneratedPath,
   isSidecarPath,
+  isExactSidecarRange,
   pressureScale,
   cheapHash,
   netWinTotals,
@@ -103,6 +104,31 @@ function handleToolResult(event, priorState, env = {}) {
   const complete = hostComplete(event, raw);
   const observedBytes = state.observedBytes + Buffer.byteLength(raw);
   const pressure = pressureScale(Number.isFinite(env.contextBytes) ? env.contextBytes : observedBytes, state.pressureBand);
+  const observed = telemetryEnabled();
+  const duplicate = observed ? detectDuplicate(env.sessionId, raw) : { duplicate: false, ageMs: null };
+  if (event.toolName === 'read' && isExactSidecarRange(filePath, event.input, raw)) {
+    return {
+      patch: null,
+      stateDelta: {
+        ...state,
+        handled: boundedHandled(state.handled, event.toolCallId, hash),
+        pressureBand: pressure.band,
+        observedBytes,
+        orderMarkers: state.orderMarkers + (raw.includes('[trim hook:') ? 1 : 0),
+        turnCounter: state.turnCounter + 1,
+      },
+      metrics: {
+        stats: null,
+        meta: null,
+        command: filePath,
+        durMs: 0,
+        dupExact: duplicate.duplicate,
+        dupAgeMs: duplicate.ageMs,
+        applied: false,
+        verbatim: true,
+      },
+    };
+  }
   const started = process.hrtime.bigint();
   const options = {
     command,
@@ -146,8 +172,6 @@ function handleToolResult(event, priorState, env = {}) {
   }
   const win = changed && netWinTotals(inBytes, outBytes, inTokEst, outTokEst);
   const durMs = Number(process.hrtime.bigint() - started) / 1e6;
-  const observed = telemetryEnabled();
-  const duplicate = observed ? detectDuplicate(env.sessionId, raw) : { duplicate: false, ageMs: null };
   const stateDelta = {
     ...state,
     handled: boundedHandled(state.handled, event.toolCallId, hash),

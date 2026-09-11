@@ -3,6 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const runtime = require('../adapters/lib/pi-runtime');
+const { SIDECAR_DIR } = require('../bin/trim-core');
 
 process.env.TRIM_SIDECAR = 'off';
 const raw = Array.from({ length: 500 }, (_, i) => `installed package ${i} ok`).join('\n');
@@ -95,6 +96,31 @@ assert.strictEqual(accumulated.exceeded, true, 'two messages in one persisted tu
   assert.strictEqual(record.inBytes, Buffer.byteLength(partA) + Buffer.byteLength(partB));
   assert.strictEqual(record.outBytes, emitted, 'recorded output bytes equal the emitted result');
   fs.rmSync(metrics, { force: true });
+}
+
+// A bounded read of a Trim sidecar comes back verbatim, never re-elided.
+{
+  fs.mkdirSync(SIDECAR_DIR, { recursive: true });
+  const sidecar = path.join(SIDECAR_DIR, `pi-range-${process.pid}.txt`);
+  const lines = Array.from({ length: 4000 }, (_, i) => `sidecar row ${i} ${'z'.repeat(i % 9)}`);
+  fs.writeFileSync(sidecar, `${lines.join('\n')}\n`);
+  const range = lines.slice(10, 40).join('\n');
+  const res = runtime.handleToolResult(
+    {
+      toolName: 'read',
+      toolCallId: 'sidecar-read',
+      input: { path: sidecar, offset: 11, limit: 30 },
+      content: [{ type: 'text', text: range }],
+      details: {},
+      isError: false,
+    },
+    {},
+    { sessionId: sid, TRIM_OFF: '0' }
+  );
+  assert.strictEqual(res.patch, null, 'bounded sidecar range is not rewritten');
+  assert.strictEqual(res.metrics.verbatim, true);
+  assert.strictEqual(res.metrics.applied, false);
+  fs.rmSync(sidecar, { force: true });
 }
 
 delete process.env.TRIM_SIDECAR;

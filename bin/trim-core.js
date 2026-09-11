@@ -307,6 +307,11 @@ function bandResult(band, prevBand) {
 // they arrive complete.
 const SIDECAR_SHELL_MAX = int(process.env.TRIM_SIDECAR_SHELL_MAX, 28000);
 const SIDECAR_DIR = require('path').join(require('os').tmpdir(), 'trim-sidecar');
+// Bound on an explicitly-ranged sidecar read that is returned verbatim: small
+// enough that reinserting it wholesale is safe, large enough to cover a normal
+// offset/limit window. Bigger or unbounded reads still get the normal cap.
+const SIDECAR_EXACT_MAX_BYTES = int(process.env.TRIM_SIDECAR_EXACT_MAX_BYTES, 64 * 1024);
+const SIDECAR_EXACT_MAX_LINES = int(process.env.TRIM_SIDECAR_EXACT_MAX_LINES, 400);
 const DIGEST_HEAD = 20;
 const DIGEST_TAIL = 15;
 const DIGEST_SIGNAL_SAMPLE = 10; // first N + last N signal lines
@@ -527,7 +532,7 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate, opts
       `[trim hook: this output is ${d.total} lines (${d.census || '0 signal lines'}) ` +
       `and was ${o.hostComplete === false ? 'saved as observed (host may have truncated)' : 'saved in full'} to ${file.replace(/\\/g, '/')}; the digest below keeps the head, tail, ` +
       `every prompt-named line, and a sample of the signal lines, each with its L<n> line number. ` +
-      `For anything else, read that file with a line offset/limit around the L<n> numbers you need. ` +
+      `For anything else, Read that file with offset/limit around the L<n> line numbers you need. ` +
       `If that file no longer exists, re-run the command instead.]`;
     const out = `${header}\n${d.body}`;
     // A near-line-free payload (one giant minified line) leaves the digest
@@ -550,6 +555,18 @@ function isSidecarPath(filePath) {
   if (typeof filePath !== 'string') return false;
   const path = require('path');
   return path.resolve(path.dirname(filePath.trim())) === path.resolve(SIDECAR_DIR);
+}
+
+// A sidecar read that names an explicit offset/limit and comes back within the
+// exact-range bound is the agent asking for that evidence, not for a digest.
+// Callers return it untouched instead of re-eliding it into another reread.
+function isExactSidecarRange(filePath, input, content) {
+  if (!isSidecarPath(filePath)) return false;
+  if (!input || typeof input !== 'object') return false;
+  if (!Number.isFinite(input.offset) && !Number.isFinite(input.limit)) return false;
+  if (typeof content !== 'string') return false;
+  if (Buffer.byteLength(content) > SIDECAR_EXACT_MAX_BYTES) return false;
+  return content.split('\n').length <= SIDECAR_EXACT_MAX_LINES;
 }
 
 // ---- read-path detection (adapters that hook file reads) ----
@@ -876,8 +893,8 @@ function compress(text, opts) {
           sidecarPath = side;
           out +=
             o.hostComplete === false
-              ? `\n[trim hook: ${inputLines}-line output saved as observed (host may have truncated) to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`
-              : `\n[trim hook: full ${inputLines}-line output saved to ${side.replace(/\\/g, '/')} — read with offset/limit if needed]`;
+              ? `\n[trim hook: ${inputLines}-line output saved as observed (host may have truncated) to ${side.replace(/\\/g, '/')} — Read it with offset/limit for an exact range]`
+              : `\n[trim hook: full ${inputLines}-line output saved to ${side.replace(/\\/g, '/')} — Read it with offset/limit for an exact range]`;
         }
       }
       if (out.length < s.length) {
@@ -1055,6 +1072,7 @@ function maybeLog(tag, stats, meta, extra) {
         ...(e.bypass ? { bypass: true } : {}),
         ...(e.applied === false ? { applied: false } : {}),
         ...(typeof e.durMs === 'number' ? { durMs: +e.durMs.toFixed(3) } : {}),
+        ...(e.verbatim ? { verbatim: true } : {}),
         ...(e.dupExact ? { dupExact: true, dupAgeMs: e.dupAgeMs ?? null } : {}),
         ...(typeof e.narrationWords === 'number' ? { narrationWords: e.narrationWords } : {}),
         ...(e.narrationExceeded ? { narrationExceeded: true } : {}),
@@ -1097,6 +1115,7 @@ module.exports = {
   buildSidecarDigest,
   maybeSidecar,
   isSidecarPath,
+  isExactSidecarRange,
   isLogPath,
   isGeneratedPath,
   cheapHash,

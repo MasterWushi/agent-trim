@@ -228,6 +228,16 @@ assert.strictEqual(pressureScale(2 * 1024 * 1024), 0.5);
   assert.ok(isGeneratedPath('package-lock.json') && isGeneratedPath('a/node_modules/x/index.js') && isGeneratedPath('app.min.js'), 'generated paths');
   assert.ok(!isGeneratedPath('src/lock.js'), 'source is not generated');
   assert.ok(!isSidecarPath(path.join(SIDECAR_DIR, 'nested', 'x.txt')), 'nested path is not sidecar dir');
+
+  // exact-range sidecar reads: bounded and small enough to return verbatim
+  const { isExactSidecarRange } = require('../bin/trim-core.js');
+  const sidecarPath = path.join(SIDECAR_DIR, 'x.txt');
+  assert.ok(isExactSidecarRange(sidecarPath, { offset: 1, limit: 10 }, 'a\nb'), 'bounded small range');
+  assert.ok(isExactSidecarRange(sidecarPath, { limit: 5 }, 'a\nb'), 'limit alone is a bound');
+  assert.ok(!isExactSidecarRange(sidecarPath, {}, 'a\nb'), 'unbounded read is not exact');
+  assert.ok(!isExactSidecarRange(sidecarPath, { offset: 1 }, '\n'.repeat(401)), 'over the line cap');
+  assert.ok(!isExactSidecarRange(sidecarPath, { limit: 5 }, 'x'.repeat(64 * 1024 + 1)), 'over the byte cap');
+  assert.ok(!isExactSidecarRange('/tmp/other.log', { offset: 1, limit: 5 }, 'a'), 'not a sidecar path');
 }
 
 // v1 sidecar readers normalize into the v2 contract

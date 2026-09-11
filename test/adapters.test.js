@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { readState, writeState, statePath } = require('../bin/lib/session-state');
+const { SIDECAR_DIR } = require('../bin/trim-core.js');
 
 const A = (f) => path.join(__dirname, '..', 'adapters', f);
 function run(script, stdin, env) {
@@ -252,6 +253,60 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   const u = JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput;
   assert.ok(u.file.content.length < bigOut.length / 2, 'log read compressed');
   assert.strictEqual(u.file.numLines, u.file.content.split('\n').length, 'numLines consistent');
+}
+// Read of a Trim sidecar: a bounded offset/limit comes back verbatim, while an
+// unbounded or over-threshold read keeps the normal cap.
+{
+  fs.mkdirSync(SIDECAR_DIR, { recursive: true });
+  const sidecar = path.join(SIDECAR_DIR, `range-${process.pid}.txt`);
+  const noisy = Array.from({ length: 300 }, (_, i) => `sidecar row ${i} ${'z'.repeat(i % 9)}`);
+  const rangeText = noisy.join('\n');
+  fs.writeFileSync(sidecar, `${rangeText}\n`);
+  const evt = {
+    tool_name: 'Read',
+    tool_input: { file_path: sidecar, offset: 1, limit: 300 },
+    tool_response: { file: { filePath: sidecar, content: rangeText, numLines: 300 } },
+    session_id: `sidecar-range-${process.pid}`,
+  };
+  const metrics = path.join(os.tmpdir(), `trim-sidecar-range-${process.pid}.jsonl`);
+  const bounded = run('claude-posttooluse.js', JSON.stringify(evt), {
+    TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_SIDECAR: 'on', TRIM_CAP_FAIL: '120',
+  });
+  assert.strictEqual(bounded.status, 0);
+  assert.strictEqual(bounded.stdout, '', 'bounded sidecar read is returned verbatim');
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.verbatim, true, 'verbatim retrieval recorded');
+  assert.strictEqual(rec.applied, false);
+  assert.strictEqual(rec.outBytes, rec.inBytes);
+  fs.rmSync(metrics, { force: true });
+
+  const unbounded = run(
+    'claude-posttooluse.js',
+    JSON.stringify({ ...evt, tool_input: { file_path: sidecar } }),
+    { TRIM_NOTE: 'off', TRIM_SIDECAR: 'on', TRIM_CAP_FAIL: '120' }
+  );
+  assert.ok(unbounded.stdout, 'the same content without offset/limit is still compressed');
+  const capped = JSON.parse(unbounded.stdout).hookSpecificOutput.updatedToolOutput.file.content;
+  assert.ok(capped.length < rangeText.length, 'unbounded read is capped');
+  assert.ok(capped.includes('[trim hook:'), 'cap marker present');
+
+  const bigLines = Array.from({ length: 900 }, (_, i) => `sidecar row ${i} ${'q'.repeat(i % 11)}`);
+  const bigText = bigLines.join('\n');
+  const over = run(
+    'claude-posttooluse.js',
+    JSON.stringify({
+      ...evt,
+      tool_input: { file_path: sidecar, offset: 1, limit: 900 },
+      tool_response: { file: { filePath: sidecar, content: bigText, numLines: 900 } },
+      session_id: `sidecar-over-${process.pid}`,
+    }),
+    { TRIM_NOTE: 'off', TRIM_SIDECAR: 'on' }
+  );
+  assert.ok(over.stdout, 'over-threshold range falls back to compression');
+  const overContent = JSON.parse(over.stdout).hookSpecificOutput.updatedToolOutput.file.content;
+  assert.ok(overContent.length < bigText.length, 'over-threshold read is capped');
+  assert.ok(!overContent.includes('saved in full to'), 'a sidecar read is never re-sidecared');
+  fs.rmSync(sidecar, { force: true });
 }
 
 // ---- codex-posttooluse ----
