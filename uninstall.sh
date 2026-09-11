@@ -9,15 +9,16 @@ strip_style() {
   perl -0pi -e 's/\n?\n<!-- trim:style:start -->.*?<!-- trim:style:end -->\n?//s' "$1"
 }
 
-node - <<'EOF'
+ROOT="$ROOT" node - <<'EOF'
 const fs = require('fs'), os = require('os');
+const ROOT = process.env.ROOT;
 for (const f of [os.homedir()+'/.claude/settings.json', os.homedir()+'/.codex/hooks.json']) {
   if (!fs.existsSync(f)) continue;
   const cfg = JSON.parse(fs.readFileSync(f,'utf8'));
   if (cfg.hooks) {
     for (const ev of ['PostToolUse', 'SubagentStart', 'PostCompact']) {
       if (!cfg.hooks[ev]) continue;
-      cfg.hooks[ev] = cfg.hooks[ev].filter(h => !JSON.stringify(h).includes('/adapters/'));
+      cfg.hooks[ev] = cfg.hooks[ev].filter(h => !JSON.stringify(h).includes(ROOT + '/adapters/'));
       if (!cfg.hooks[ev].length) delete cfg.hooks[ev];
     }
     if (!Object.keys(cfg.hooks).length) delete cfg.hooks;

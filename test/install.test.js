@@ -28,7 +28,12 @@ fs.writeFileSync(
     {
       model: 'opus',
       permissions: { allow: ['Bash(npm run:*)'] },
-      hooks: { PostToolUse: [{ matcher: '^Bash$', hooks: [{ type: 'command', command: 'my-own-hook.sh' }] }] },
+      hooks: {
+        PostToolUse: [
+          { matcher: '^Bash$', hooks: [{ type: 'command', command: 'my-own-hook.sh' }] },
+          { matcher: '^Read$', hooks: [{ type: 'command', command: 'node /opt/other/adapters/thing.js', timeout: 5000 }] },
+        ],
+      },
     },
     null,
     2
@@ -52,6 +57,7 @@ install();
   assert.deepStrictEqual(cfg.permissions, { allow: ['Bash(npm run:*)'] }, 'user permissions preserved');
   const post = cfg.hooks.PostToolUse;
   assert.ok(post.some((h) => JSON.stringify(h).includes('my-own-hook.sh')), 'user hook preserved');
+  assert.ok(post.some((h) => JSON.stringify(h).includes('/opt/other/adapters/thing.js')), 'foreign /adapters/ hook preserved');
   assert.ok(post.some((h) => JSON.stringify(h).includes('claude-posttooluse.js')), 'trim hook added');
   assert.ok(cfg.hooks.SubagentStart && cfg.hooks.PostCompact, 'extras wired');
   assert.ok(claudeMd().includes('<!-- trim:style:start -->'), 'style appended');
@@ -79,7 +85,11 @@ uninstall();
   assert.strictEqual(cfg.model, 'opus', 'user setting still present');
   const post = (cfg.hooks && cfg.hooks.PostToolUse) || [];
   assert.ok(post.some((h) => JSON.stringify(h).includes('my-own-hook.sh')), 'user hook survives uninstall');
-  assert.ok(!JSON.stringify(cfg).includes('/adapters/'), 'trim hooks removed');
+  assert.ok(
+    post.some((h) => JSON.stringify(h).includes('/opt/other/adapters/thing.js')),
+    'foreign hook at an /adapters/ path survives uninstall'
+  );
+  assert.ok(!JSON.stringify(cfg).includes(path.join(WORK, 'adapters')), 'trim hooks removed');
   assert.ok(!claudeMd().includes('trim:style:start'), 'style block removed');
   assert.ok(claudeMd().includes('# my rules'), 'user CLAUDE.md text intact');
   assert.ok(!fs.existsSync(path.join(HOME, '.config', 'opencode', 'plugins', 'trim.ts')), 'opencode plugin removed');
