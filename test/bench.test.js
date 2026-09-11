@@ -8,6 +8,7 @@ execFileSync(process.execPath, [path.join(__dirname, '..', 'bench', 'run.js'), '
   stdio: 'inherit',
 });
 execFileSync(process.execPath, [path.join(__dirname, '..', 'bench', 'efficiency.js'), '--check'], { stdio: 'inherit' });
-execFileSync(process.execPath, [path.join(__dirname, '..', 'bench', 'adapter.js'), '--check'], { stdio: 'inherit' });
 execFileSync(process.execPath, [path.join(__dirname, '..', 'bench', 'perf.js'), '--check'], { stdio: 'inherit' });
+// last: it spawns dozens of processes, and the contention skews any timing reported after it
+execFileSync(process.execPath, [path.join(__dirname, '..', 'bench', 'adapter.js'), '--check'], { stdio: 'inherit' });
 console.log('bench.test.js: baseline check passed');
