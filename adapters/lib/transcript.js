@@ -1,15 +1,15 @@
 'use strict';
 
-// Shared transcript-tail helpers (Claude Code only). The compressor adapter
+// Shared transcript-tail helpers (Claude Code only). The PostToolUse adapter
 // needs the current turn's real human prompt (enumeration carve-out +
 // relevance preservation) and the narration meter needs the turn's assistant
-// text blocks; keep the tail-read and turn-boundary schema in ONE place so
-// the origin.kind/isMeta rules can't drift between the two.
+// text blocks; both run in one process off ONE tail read, and the
+// turn-boundary schema lives here so the origin.kind/isMeta rules can't drift.
 // Ported from hush (github.com/V-Songbird/hush), MIT.
 
 const fs = require('fs');
 
-// Fixed 1MB tail window: hooks run on every tool call in long sessions, so
+// Fixed 1MB tail window: the hook runs on every tool call in long sessions, so
 // never read the whole transcript. A single turn larger than the window
 // undercounts — a documented ceiling.
 const TAIL_BYTES = 1024 * 1024;
@@ -58,17 +58,11 @@ function userPromptText(entry) {
   return '';
 }
 
-// The most recent real human prompt in the transcript tail — the one
-// governing the current turn. '' when missing/unreadable, so callers treat
-// "unknown" as "no carve-out" and fail safe.
-function lastUserPromptText(transcriptPath) {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) return '';
-  let lines;
-  try {
-    lines = readTailLines(transcriptPath);
-  } catch {
-    return '';
-  }
+// The most recent real human prompt in already-read tail lines — the one
+// governing the current turn. '' when absent, so callers treat "unknown" as
+// "no carve-out" and fail safe. Parses lazily from the end: a turn boundary is
+// usually a few lines back even in a 1MB tail.
+function lastUserPromptTextFromLines(lines) {
   for (let i = lines.length - 1; i >= 0; i--) {
     let entry;
     try {
@@ -81,4 +75,21 @@ function lastUserPromptText(transcriptPath) {
   return '';
 }
 
-module.exports = { readTailLines, isRealUserPrompt, userPromptText, lastUserPromptText, TAIL_BYTES };
+// One tail read per process, shared by prompt extraction and the narration
+// meter. null when there is no readable transcript (bare harness).
+function tailReader(transcriptPath) {
+  let lines;
+  let done = false;
+  return () => {
+    if (done) return lines;
+    done = true;
+    try {
+      lines = transcriptPath && fs.existsSync(transcriptPath) ? readTailLines(transcriptPath) : null;
+    } catch {
+      lines = null;
+    }
+    return lines;
+  };
+}
+
+module.exports = { readTailLines, isRealUserPrompt, userPromptText, lastUserPromptTextFromLines, tailReader, TAIL_BYTES };

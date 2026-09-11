@@ -16,10 +16,13 @@ const opencodeRuntime = require('../adapters/lib/opencode-runtime.js');
 
 const ROOT = path.join(__dirname, '..');
 const CLAUDE_ADAPTER = path.join(ROOT, 'adapters', 'claude-posttooluse.js');
+// Stand-in for the retired second PostToolUse hook, so the two-process path
+// trim used to install can still be measured against the merged one.
+const LEGACY_METER = path.join(__dirname, 'legacy-narration-meter.js');
 const CODEX_ADAPTER = path.join(ROOT, 'adapters', 'codex-posttooluse.js');
 const DOC = path.join(ROOT, 'docs', 'adapter-overhead.md');
 const CHECK = process.argv.includes('--check');
-const ITERATIONS = CHECK ? 1 : 20;
+const ITERATIONS = CHECK ? 2 : 20;
 const WARMUP = CHECK ? 0 : 1;
 const MAXBUF = 64 * 1024 * 1024;
 const RUN = Math.random().toString(36).slice(2, 6);
@@ -226,22 +229,35 @@ function piEmitted(patch, fallback) {
 
 let callSeq = 0;
 
+// variant 'merged' = today's single PostToolUse process; 'legacy' = the two
+// processes trim used to install (compressor with the meter disabled, then a
+// separate meter process), summed as the harness would pay them.
 function claudeBashScenario(label, payload, options) {
   const settings = options || {};
   const session = sessionFor(settings.tag);
   const transcriptPath = settings.transcriptPath || smallTranscriptPath;
   const scale = Buffer.byteLength(fs.readFileSync(transcriptPath, 'utf8')) >= 1024 * 1024 ? 0.5 : 1;
+  const legacy = !!settings.legacy;
+  const shownLabel = legacy ? `${label} [legacy 2-process]` : label;
   return {
-    id: `claude/${label}`,
+    id: `claude/${shownLabel}`,
     adapter: 'claude',
-    label,
+    label: shownLabel,
+    pair: settings.pair,
+    variant: legacy ? 'legacy' : 'merged',
     sidecarOff: !!settings.sidecarOff,
     reset: () => cleanupSession(session),
     prep: () => removeSidecars(session),
     invoke: (childEnv) => {
-      const run = spawnAdapter(CLAUDE_ADAPTER, claudeBashEvent(payload, transcriptPath, session), childEnv);
+      const event = claudeBashEvent(payload, transcriptPath, session);
       const inBytes = Buffer.byteLength(payload);
-      return { ms: run.ms, inBytes, outBytes: claudeEmitted(run.result.stdout, inBytes) };
+      if (!legacy) {
+        const run = spawnAdapter(CLAUDE_ADAPTER, event, childEnv);
+        return { ms: run.ms, inBytes, outBytes: claudeEmitted(run.result.stdout, inBytes) };
+      }
+      const compressor = spawnAdapter(CLAUDE_ADAPTER, event, { ...childEnv, TRIM_NARRATION: 'off' });
+      const meter = spawnAdapter(LEGACY_METER, event, childEnv);
+      return { ms: compressor.ms + meter.ms, inBytes, outBytes: claudeEmitted(compressor.result.stdout, inBytes) };
     },
     core: () =>
       compress(payload, {
@@ -346,20 +362,50 @@ function piScenario(label, event, options) {
   };
 }
 
+// The sidecar file is content-addressed on the CLEANED text, which the bench
+// cannot predict from the raw payload: deleting a guessed path would silently
+// stop forcing the write path the moment cleaning changed. Instead each
+// iteration diffs the sidecar directory, deletes exactly what it created, and
+// asserts that a sidecar-producing scenario really wrote one every time.
+function sidecarNames() {
+  try {
+    return new Set(fs.readdirSync(SIDECAR_DIR));
+  } catch {
+    return new Set();
+  }
+}
+
 function opencodeScenario(label, payload, options) {
   const settings = options || {};
+  let created = [];
+  const dropCreated = () => {
+    for (const name of created) fs.rmSync(path.join(SIDECAR_DIR, name), { force: true });
+    created = [];
+  };
   return {
     id: `opencode/${label}`,
     adapter: 'opencode',
     label,
     sidecarOff: !!settings.sidecarOff,
-    prep: () => removeUnprefixedSidecars(payload),
-    teardown: () => removeUnprefixedSidecars(payload),
+    reset: () => {
+      dropCreated();
+      removeUnprefixedSidecars(payload); // best effort against a leftover from an aborted run
+    },
+    prep: dropCreated,
+    teardown: () => {
+      dropCreated();
+      removeUnprefixedSidecars(payload);
+    },
     invoke: async () => {
+      const before = sidecarNames();
       const output = { output: payload };
       const started = process.hrtime.bigint();
       await opencodeRuntime.afterToolExecute({ args: { command: 'npm run build' } }, output);
       const ms = Number(process.hrtime.bigint() - started) / 1e6;
+      created = [...sidecarNames()].filter((name) => !before.has(name));
+      if (settings.expectSidecar && !created.some((name) => name.endsWith('.txt'))) {
+        throw new Error(`${label}: sidecar-on iteration wrote no sidecar — the write path is no longer measured`);
+      }
       const inBytes = Buffer.byteLength(payload);
       return { ms, inBytes, outBytes: Buffer.byteLength(output.output) };
     },
@@ -387,12 +433,27 @@ function piReadEvent(content, filePath, input) {
 
 function buildScenarios() {
   const list = [
-    claudeBashScenario('tiny bash', TINY_BASH, { tag: 'ct' }),
-    claudeBashScenario('medium bash', MEDIUM_BASH, { tag: 'cm' }),
-    claudeBashScenario('large bash (sidecar)', LARGE_BASH, { tag: 'cl' }),
+    claudeBashScenario('tiny bash', TINY_BASH, { tag: 'ct', pair: 'tiny bash' }),
+    claudeBashScenario('tiny bash', TINY_BASH, { tag: '1t', pair: 'tiny bash', legacy: true }),
+    claudeBashScenario('medium bash', MEDIUM_BASH, { tag: 'cm', pair: 'medium bash' }),
+    claudeBashScenario('medium bash', MEDIUM_BASH, { tag: '1m', pair: 'medium bash', legacy: true }),
+    claudeBashScenario('large bash (sidecar)', LARGE_BASH, { tag: 'cl', pair: 'large bash (sidecar)' }),
+    claudeBashScenario('large bash (sidecar)', LARGE_BASH, { tag: '1l', pair: 'large bash (sidecar)', legacy: true }),
     claudeBashScenario('large bash (sidecar off)', LARGE_BASH, { tag: 'co', sidecarOff: true }),
-    claudeBashScenario('tiny bash (small transcript)', TINY_BASH, { tag: 'cs', transcriptPath: smallTranscriptPath }),
-    claudeBashScenario('tiny bash (1MB transcript)', TINY_BASH, { tag: 'cb', transcriptPath: largeTranscriptPath }),
+    claudeBashScenario('tiny bash (small transcript)', TINY_BASH, { tag: 'cs', transcriptPath: smallTranscriptPath, pair: 'tiny bash (small transcript)' }),
+    claudeBashScenario('tiny bash (small transcript)', TINY_BASH, {
+      tag: '1s',
+      transcriptPath: smallTranscriptPath,
+      pair: 'tiny bash (small transcript)',
+      legacy: true,
+    }),
+    claudeBashScenario('tiny bash (1MB transcript)', TINY_BASH, { tag: 'cb', transcriptPath: largeTranscriptPath, pair: 'tiny bash (1MB transcript)' }),
+    claudeBashScenario('tiny bash (1MB transcript)', TINY_BASH, {
+      tag: '1b',
+      transcriptPath: largeTranscriptPath,
+      pair: 'tiny bash (1MB transcript)',
+      legacy: true,
+    }),
     claudeReadScenario('read sidecar (bounded range)', SIDECAR_READ_BOUNDED, { offset: 20, limit: 60 }, { tag: 'cr' }),
     claudeReadScenario('read sidecar (unbounded)', SIDECAR_READ_UNBOUNDED, {}, { tag: 'cu' }),
     codexBashScenario('tiny bash', TINY_BASH, { tag: 'xt' }),
@@ -401,7 +462,7 @@ function buildScenarios() {
     codexBashScenario('large bash (sidecar off)', LARGE_BASH, { tag: 'xo', sidecarOff: true }),
     opencodeScenario('tiny bash', TINY_BASH),
     opencodeScenario('medium bash', MEDIUM_BASH),
-    opencodeScenario('large bash (sidecar)', LARGE_BASH),
+    opencodeScenario('large bash (sidecar)', LARGE_BASH, { expectSidecar: true }),
     opencodeScenario('large bash (sidecar off)', LARGE_BASH, { sidecarOff: true }),
   ];
   const piBash = (label, payload, tag, sidecarOff) =>
@@ -522,6 +583,8 @@ async function runScenario(scenario, telemetry) {
     id: scenario.id,
     adapter: scenario.adapter,
     label: scenario.label,
+    pair: scenario.pair,
+    variant: scenario.variant,
     telemetry,
     iterations: ITERATIONS,
     p50Ms: +percentile(adapterSamples, 0.5).toFixed(2),
@@ -531,6 +594,37 @@ async function runScenario(scenario, telemetry) {
     coreP50Ms: +percentile(coreSamples, 0.5).toFixed(3),
     coreP95Ms: +percentile(coreSamples, 0.95).toFixed(3),
   };
+}
+
+// Claude PostToolUse before/after: legacy two spawned processes vs the merged
+// one, same payload and same machine.
+function comparisons(rows) {
+  const out = [];
+  for (const row of rows) {
+    if (row.variant !== 'merged' || !row.pair) continue;
+    const legacy = rows.find((r) => r.pair === row.pair && r.variant === 'legacy' && r.telemetry === row.telemetry);
+    if (!legacy) continue;
+    out.push({
+      pair: row.pair,
+      telemetry: row.telemetry,
+      legacyP50: legacy.p50Ms,
+      mergedP50: row.p50Ms,
+      savedMs: +(legacy.p50Ms - row.p50Ms).toFixed(2),
+      savedPct: +(((legacy.p50Ms - row.p50Ms) / legacy.p50Ms) * 100).toFixed(1),
+      bytesMatch: legacy.outBytes === row.outBytes,
+    });
+  }
+  return out;
+}
+
+function comparisonTable(pairs) {
+  const header = ['claude posttooluse', 'telemetry', 'legacy p50 ms', 'merged p50 ms', 'saved ms', 'saved %', 'emitted bytes equal'];
+  const table = [header, header.map(() => '---')];
+  for (const p of pairs) {
+    table.push([p.pair, p.telemetry ? 'on' : 'off', String(p.legacyP50), String(p.mergedP50), String(p.savedMs), String(p.savedPct), p.bytesMatch ? 'yes' : 'NO']);
+  }
+  const widths = header.map((_, i) => Math.max(...table.map((line) => line[i].length)));
+  return table.map((line) => line.map((cell, i) => cell.padEnd(widths[i])).join('  ')).join('\n');
 }
 
 function report(rows) {
@@ -568,9 +662,15 @@ function markdown(rows) {
     'boundary: process startup, stdin parsing, transcript/state I/O, sidecar writes, and',
     'hook-JSON serialization.',
     '',
-    'The sidecar scenarios delete the content-addressed sidecar file before each',
-    'iteration so the write path is measured every iteration; the sidecar-off variants',
-    'measure the same payload through `TRIM_SIDECAR=off`.',
+    'The sidecar scenarios delete exactly the sidecar files the previous iteration',
+    'created (the path is content-addressed on cleaned text, so it cannot be guessed',
+    'from the payload) and assert that a sidecar-producing scenario writes one every',
+    'iteration; the sidecar-off variants measure the same payload through',
+    '`TRIM_SIDECAR=off`.',
+    '',
+    'Rows marked `[legacy 2-process]` spawn the two PostToolUse hooks trim used to',
+    'install (compressor + a separate narration meter) and sum them; the unmarked',
+    'claude rows are the single merged process that replaced them.',
     '',
     `Iterations: ${ITERATIONS} measured per scenario, ${WARMUP} warmup discarded.`,
     '',
@@ -581,6 +681,24 @@ function markdown(rows) {
     md.push(
       `| ${row.label} | ${row.adapter} | ${row.telemetry ? 'on' : 'off'} | ${row.iterations} | ${row.p50Ms} | ${row.p95Ms} | ${row.inBytes} | ${row.outBytes} | ${row.coreP50Ms} | ${row.coreP95Ms} |`
     );
+  }
+  const pairs = comparisons(rows);
+  if (pairs.length) {
+    md.push(
+      '',
+      '## Claude PostToolUse: legacy two-process vs merged one-process',
+      '',
+      'Same payload, same machine, same iteration count. `emitted bytes equal` confirms',
+      'the merged hook returns byte-identical model-visible output.',
+      '',
+      '| scenario | telemetry | legacy p50 ms | merged p50 ms | saved ms | saved % | emitted bytes equal |',
+      '|---|---|---:|---:|---:|---:|---|'
+    );
+    for (const p of pairs) {
+      md.push(
+        `| ${p.pair} | ${p.telemetry ? 'on' : 'off'} | ${p.legacyP50} | ${p.mergedP50} | ${p.savedMs} | ${p.savedPct} | ${p.bytesMatch ? 'yes' : 'NO'} |`
+      );
+    }
   }
   md.push('');
   return md.join('\n');
@@ -602,7 +720,17 @@ async function main() {
       !(row.inBytes > 0) ||
       !(row.outBytes > 0)
   );
+  const pairs = comparisons(rows);
+  const mergedPairs = new Set(rows.filter((r) => r.variant === 'merged' && r.pair).map((r) => `${r.pair}/${r.telemetry}`));
+  const missing = [...mergedPairs].filter((key) => !pairs.some((p) => `${p.pair}/${p.telemetry}` === key));
+  const mismatched = pairs.filter((p) => !p.bytesMatch);
   if (CHECK) {
+    if (missing.length || mismatched.length) {
+      for (const key of missing) console.error(`adapter --check: no legacy counterpart for ${key}`);
+      for (const p of mismatched) console.error(`adapter --check: emitted bytes differ for ${p.pair} telemetry=${p.telemetry ? 'on' : 'off'}`);
+      cleanupAll();
+      process.exit(1);
+    }
     if (broken.length) {
       console.error(`adapter --check: ${broken.length} scenario(s) failed structural assertions`);
       for (const row of broken) console.error(`  ${row.id} telemetry=${row.telemetry ? 'on' : 'off'}`);
@@ -614,6 +742,8 @@ async function main() {
     return;
   }
   console.log(report(rows));
+  if (pairs.length) console.log(`\n${comparisonTable(pairs)}`);
+  for (const p of mismatched) console.error(`WARNING: emitted bytes differ for ${p.pair} telemetry=${p.telemetry ? 'on' : 'off'}`);
   fs.writeFileSync(DOC, markdown(rows));
   console.log(`\nwrote ${path.relative(ROOT, DOC)}`);
   cleanupAll();

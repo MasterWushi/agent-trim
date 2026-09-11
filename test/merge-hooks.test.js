@@ -76,6 +76,23 @@ runMerge();
   );
 }
 
+// an existing install's separate narration-meter entry is removed, not kept
+{
+  const cfg = settings();
+  cfg.hooks.PostToolUse.push({
+    hooks: [{ type: 'command', command: `node ${REPO}/adapters/claude-narration-meter.js`, timeout: 10000 }],
+  });
+  fs.writeFileSync(settingsFile, JSON.stringify(cfg, null, 2) + '\n');
+  runMerge();
+  const post = settings().hooks.PostToolUse;
+  assert.ok(!JSON.stringify(post).includes('claude-narration-meter.js'), 'obsolete meter hook removed');
+  assert.strictEqual(post.filter(mineEntry).length, 1, 'exactly one trim PostToolUse entry remains');
+  assert.ok(
+    post.some((h) => JSON.stringify(h).includes('/opt/other/adapters/thing.js')),
+    'foreign hook survives the obsolete sweep'
+  );
+}
+
 // legacy trim entry under the real ROOT with an old filename -> replaced in place, not duplicated
 {
   const legacyFile = path.join(HOME, '.claude', 'settings.json');
@@ -100,7 +117,7 @@ runMerge();
 }
 
 function mineEntry(h) {
-  return JSON.stringify(h).includes(`${REPO}/adapters/`) && (h.matcher || '') === '^(Bash|Read)$';
+  return JSON.stringify(h).includes(`${REPO}/adapters/`);
 }
 
 console.log('merge-hooks.test.js: all assertions passed');

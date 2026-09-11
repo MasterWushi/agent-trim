@@ -21,13 +21,12 @@ const file =
 const wanted =
   which === 'claude'
     ? {
+        // One PostToolUse process for compression AND the narration meter, so
+        // no matcher: the adapter gates compression itself (TRIM_TOOLS) while
+        // the meter still sees every tool call.
         PostToolUse: [
           {
-            matcher: '^(Bash|Read)$',
             hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-posttooluse.js`, timeout: 10000 }],
-          },
-          {
-            hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-narration-meter.js`, timeout: 10000 }],
           },
         ],
         SubagentStart: [
@@ -47,23 +46,32 @@ const wanted =
         ],
       };
 
+// Trim adapters that used to be installed and no longer are. Removed before
+// merging so an upgrade can't leave a stale trim process behind, and so the
+// matcher-based fallback below never matches one of our own retired entries.
+const obsolete = which === 'claude' ? ['claude-narration-meter.js'] : [];
+
 const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
 cfg.hooks = cfg.hooks || {};
+for (const event of Object.keys(cfg.hooks)) {
+  if (!Array.isArray(cfg.hooks[event])) continue;
+  cfg.hooks[event] = cfg.hooks[event].filter(
+    (h) => !obsolete.some((name) => JSON.stringify(h).includes(`${ROOT}/adapters/${name}`))
+  );
+  if (!cfg.hooks[event].length) delete cfg.hooks[event];
+}
 for (const [event, entries] of Object.entries(wanted)) {
   const list = (cfg.hooks[event] = cfg.hooks[event] || []);
   for (const entry of entries) {
     const name = entry.hooks[0].command.match(/adapters\/([\w-]+\.js)/)[1];
     // legacy installs keyed everything on '/adapters/': match by filename,
-    // falling back to any trim entry for this event with the same matcher.
-    // Both branches are constrained to commands under our own ROOT — a
-    // third-party hook whose path happens to contain '/adapters/' must
-    // coexist, not be silently replaced.
+    // falling back to any trim entry for this event — trim owns exactly one
+    // entry per event, so an older filename or matcher is replaced in place
+    // rather than duplicated. Both branches are constrained to commands under
+    // our own ROOT — a third-party hook whose path happens to contain
+    // '/adapters/' must coexist, not be silently replaced.
     const mine = (h) => JSON.stringify(h).includes(ROOT + '/adapters/');
-    const idx = list.findIndex(
-      (h) =>
-        JSON.stringify(h).includes(ROOT + '/adapters/' + name) ||
-        (mine(h) && (h.matcher || '') === (entry.matcher || ''))
-    );
+    const idx = list.findIndex((h) => JSON.stringify(h).includes(ROOT + '/adapters/' + name) || mine(h));
     if (idx >= 0) list[idx] = entry;
     else list.push(entry);
   }

@@ -41,12 +41,15 @@ That wording matters: a bare "745 lines elided" makes the model rationally distr
 
 ## Runtime cooperation
 
-Claude Code exposes more hook surface than the other harnesses (transcript access, subagent and compaction events), so its install gets four hooks instead of one:
+Claude Code exposes more hook surface than the other harnesses (transcript access, subagent and compaction events), so its install gets three hooks instead of one. Compression and the narration
+meter share a single `PostToolUse` process: a second spawned hook cost ~60-105ms
+of Node startup for work measured in single-digit milliseconds, so they were
+merged (see [`docs/adapter-overhead.md`](docs/adapter-overhead.md)).
 
 | Hook | What it does |
 |---|---|
-| Compressor (`PostToolUse`, Bash + Read) | Everything above, and Read results too — but ONLY for log-shaped files, machine-generated files (lockfiles, minified bundles, `node_modules`), and sidecar re-reads (a bounded `offset`/`limit` read of a sidecar comes back verbatim, not re-elided); source code always passes untouched, so a capped Read can never cut lines the model needs to edit byte-exactly. Plus three transcript-driven carve-outs: a prompt asking for **every/all/each** of something countable disables elision for that turn (a capped view of a completeness task just triggers re-runs); identifiers the prompt names in backticks/quotes always survive the cap; and caps tighten as the session transcript grows past 400KB/1MB (`TRIM_ADAPTIVE=off` to disable). The first visible marker also delivers a once-per-session note over the hook `additionalContext` channel telling the model the `[trim hook: ...]` markers are trusted tooling (`TRIM_NOTE=off` to disable). |
-| Narration meter (`PostToolUse`, all tools) | Counts words of mid-turn narration (text the model emits between tool calls — billed as output, then re-billed as input every following turn, and nobody reads it). Past 120 words (`TRIM_NARRATION_BUDGET`) it injects one corrective line; re-arms only if narration keeps growing. Costs zero tokens while the agent behaves. `TRIM_NARRATION=off` to disable. |
+| Compressor (`PostToolUse`, Bash + Read by default) | Everything above, and Read results too — but ONLY for log-shaped files, machine-generated files (lockfiles, minified bundles, `node_modules`), and sidecar re-reads (a bounded `offset`/`limit` read of a sidecar comes back verbatim, not re-elided); source code always passes untouched, so a capped Read can never cut lines the model needs to edit byte-exactly. Plus three transcript-driven carve-outs: a prompt asking for **every/all/each** of something countable disables elision for that turn (a capped view of a completeness task just triggers re-runs); identifiers the prompt names in backticks/quotes always survive the cap; and caps tighten as the session transcript grows past 400KB/1MB (`TRIM_ADAPTIVE=off` to disable). The hook is installed without a matcher so the narration meter sees every tool call; which tools are *compressed* is gated by `TRIM_TOOLS` (default `^(Bash|Read)$`). The first visible marker also delivers a once-per-session note over the hook `additionalContext` channel telling the model the `[trim hook: ...]` markers are trusted tooling (`TRIM_NOTE=off` to disable). |
+| Narration meter (same `PostToolUse` process, all tools) | Counts words of mid-turn narration (text the model emits between tool calls — billed as output, then re-billed as input every following turn, and nobody reads it). Past 120 words (`TRIM_NARRATION_BUDGET`) it injects one corrective line; re-arms only if narration keeps growing. Costs zero tokens while the agent behaves. `TRIM_NARRATION=off` to disable. |
 | Subagent brief (`SubagentStart`) | Style files never reach subagents, so spawned workers pad their reports with preamble — which lands in the parent conversation and is re-sent every later turn. Injects one line per spawn: final message is a tool result, findings only. `TRIM_SUBAGENT=off` to disable. |
 | Compaction re-arm (`PostCompact`) | Re-arms marker provenance, resets narration/pressure/duplicate state, and increments the compaction epoch. Claude's current PreCompact contract cannot add summary instructions, so no dead hook is installed. |
 
@@ -166,7 +169,7 @@ Environment variables on the core (defaults in parentheses):
 - `TRIM_KEEP_RE` — regex for which lines count as signal (always survive the cap)
 - `TRIM_TEMPLATE=off` — disable same-shaped-line folding; `TRIM_TEMPLATE_MIN_RUN` (5) sets the minimum run length
 - `TRIM_SIDECAR=off` — keep huge outputs inline instead of moving them to a file; `TRIM_SIDECAR_MIN` (15000) sets the size threshold, `TRIM_SIDECAR_SHELL_MAX` (28000) the shell-output ceiling above which the harness's own truncation is assumed
-- Claude Code extras: `TRIM_ADAPTIVE=off`, `TRIM_NOTE=off`, `TRIM_NARRATION=off`, `TRIM_NARRATION_BUDGET` (120), `TRIM_SUBAGENT=off` — see the table above
+- Claude Code extras: `TRIM_ADAPTIVE=off`, `TRIM_NOTE=off`, `TRIM_NARRATION=off`, `TRIM_NARRATION_BUDGET` (120), `TRIM_TOOLS` (`^(Bash|Read)$`), `TRIM_SUBAGENT=off` — see the table above
 
 - `TRIM_STRATEGIES=off` — disable the structured-format layer (eslint/tsc/test-runners/diffstat/JSONL)
 - `TRIM_SIDECAR_TTL_HOURS` (72) — sidecar retention before best-effort sweep

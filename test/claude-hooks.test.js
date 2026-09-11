@@ -2,7 +2,7 @@
 // Tests for the Claude-Code-only hooks: narration meter logic, transcript
 // turn-boundary rules, subagent brief shape.
 const assert = require('assert');
-const { stepMeter, measureCurrentTurn, wordCount } = require('../adapters/claude-narration-meter.js');
+const { stepMeter, measureCurrentTurn, wordCount } = require('../adapters/lib/narration.js');
 const { isRealUserPrompt } = require('../adapters/lib/transcript.js');
 const { BRIEF } = require('../adapters/claude-subagent-brief.js');
 const { PRESERVATION_INSTRUCTIONS } = require('../adapters/claude-precompact.js');
@@ -36,25 +36,25 @@ assert.ok(!isRealUserPrompt(notification), 'notification is not a prompt');
 
 // --- measureCurrentTurn: counts assistant text since last human prompt ---
 {
-  const lines = [
-    JSON.stringify({ type: 'user', uuid: 'u1', message: { content: 'old prompt' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'old old old narration' }] } }),
-    JSON.stringify({ type: 'user', uuid: 'u2', message: { content: 'new prompt' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'three words here' }] } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'two more' }] } }),
+  const entries = [
+    { type: 'user', uuid: 'u1', message: { content: 'old prompt' } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'old old old narration' }] } },
+    { type: 'user', uuid: 'u2', message: { content: 'new prompt' } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'three words here' }] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'two more' }] } },
   ];
-  const m = measureCurrentTurn(lines);
+  const m = measureCurrentTurn(entries);
   assert.strictEqual(m.narration, 5, 'counts only current-turn words');
   assert.strictEqual(m.blocks, 2, 'counts blocks');
   assert.strictEqual(m.turnKey, 'u2', 'keys on the boundary prompt');
 }
 // sidechain (subagent) assistant text never counts
 {
-  const lines = [
-    JSON.stringify({ type: 'user', uuid: 'u1', message: { content: 'prompt' } }),
-    JSON.stringify({ type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'a b c d e' }] } }),
+  const entries = [
+    { type: 'user', uuid: 'u1', message: { content: 'prompt' } },
+    { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'a b c d e' }] } },
   ];
-  assert.strictEqual(measureCurrentTurn(lines).narration, 0, 'sidechain excluded');
+  assert.strictEqual(measureCurrentTurn(entries).narration, 0, 'sidechain excluded');
 }
 
 assert.strictEqual(wordCount('  a  b\nc '), 3);

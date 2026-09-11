@@ -10,55 +10,89 @@ input when the adapter passed the result through untouched. `core` is an in-proc
 boundary: process startup, stdin parsing, transcript/state I/O, sidecar writes, and
 hook-JSON serialization.
 
-The sidecar scenarios delete the content-addressed sidecar file before each
-iteration so the write path is measured every iteration; the sidecar-off variants
-measure the same payload through `TRIM_SIDECAR=off`.
+The sidecar scenarios delete exactly the sidecar files the previous iteration
+created (the path is content-addressed on cleaned text, so it cannot be guessed
+from the payload) and assert that a sidecar-producing scenario writes one every
+iteration; the sidecar-off variants measure the same payload through
+`TRIM_SIDECAR=off`.
+
+Rows marked `[legacy 2-process]` spawn the two PostToolUse hooks trim used to
+install (compressor + a separate narration meter) and sum them; the unmarked
+claude rows are the single merged process that replaced them.
 
 Iterations: 20 measured per scenario, 1 warmup discarded.
 
 | scenario | adapter | telemetry | iters | p50 ms | p95 ms | in bytes | emitted bytes | core p50 ms | core p95 ms |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| tiny bash | claude | off | 20 | 62.55 | 150.81 | 242 | 242 | 0.101 | 0.411 |
-| tiny bash | claude | on | 20 | 104.9 | 113.73 | 242 | 242 | 0.091 | 0.101 |
-| medium bash | claude | off | 20 | 89.33 | 102 | 3325 | 211 | 0.343 | 0.442 |
-| medium bash | claude | on | 20 | 90.45 | 98.13 | 3325 | 211 | 0.38 | 0.425 |
-| large bash (sidecar) | claude | off | 20 | 100.96 | 110.89 | 18714 | 2632 | 3.169 | 3.518 |
-| large bash (sidecar) | claude | on | 20 | 105.92 | 120.22 | 18714 | 2632 | 3.209 | 4.12 |
-| large bash (sidecar off) | claude | off | 20 | 102.16 | 115.64 | 18714 | 188 | 1.926 | 2.339 |
-| large bash (sidecar off) | claude | on | 20 | 109.11 | 124.62 | 18714 | 188 | 1.494 | 1.719 |
-| tiny bash (small transcript) | claude | off | 20 | 87.85 | 90.07 | 242 | 242 | 0.062 | 0.072 |
-| tiny bash (small transcript) | claude | on | 20 | 92 | 100.33 | 242 | 242 | 0.078 | 0.156 |
-| tiny bash (1MB transcript) | claude | off | 20 | 85.91 | 91.09 | 242 | 242 | 0.076 | 0.119 |
-| tiny bash (1MB transcript) | claude | on | 20 | 89.42 | 104.46 | 242 | 242 | 0.046 | 0.063 |
-| read sidecar (bounded range) | claude | off | 20 | 57.27 | 88.83 | 2400 | 2400 | 0.316 | 0.569 |
-| read sidecar (bounded range) | claude | on | 20 | 88.6 | 102.91 | 2400 | 2400 | 0.313 | 0.409 |
-| read sidecar (unbounded) | claude | off | 20 | 103.31 | 110.1 | 19253 | 163 | 2.257 | 2.662 |
-| read sidecar (unbounded) | claude | on | 20 | 103.61 | 112.55 | 19253 | 163 | 2.08 | 2.479 |
-| tiny bash | codex | off | 20 | 84.21 | 86.84 | 242 | 242 | 0.073 | 0.085 |
-| tiny bash | codex | on | 20 | 82.35 | 90.53 | 242 | 242 | 0.074 | 0.088 |
-| medium bash | codex | off | 20 | 84.99 | 102.56 | 3325 | 211 | 0.325 | 0.604 |
-| medium bash | codex | on | 20 | 91.52 | 101.2 | 3325 | 211 | 0.347 | 0.651 |
-| large bash (sidecar) | codex | off | 20 | 101.1 | 107.26 | 18714 | 2632 | 3.199 | 3.651 |
-| large bash (sidecar) | codex | on | 20 | 93.25 | 103.18 | 18714 | 2632 | 3.366 | 4.576 |
-| large bash (sidecar off) | codex | off | 20 | 82.98 | 91.5 | 18714 | 188 | 1.462 | 1.601 |
-| large bash (sidecar off) | codex | on | 20 | 83.37 | 85.44 | 18714 | 188 | 1.438 | 1.576 |
-| tiny bash | opencode | off | 20 | 0.11 | 0.42 | 242 | 242 | 0.062 | 0.068 |
-| tiny bash | opencode | on | 20 | 0.23 | 0.39 | 242 | 242 | 0.061 | 0.065 |
-| medium bash | opencode | off | 20 | 0.3 | 0.32 | 3325 | 211 | 0.235 | 0.362 |
-| medium bash | opencode | on | 20 | 0.42 | 0.46 | 3325 | 211 | 0.275 | 0.277 |
-| large bash (sidecar) | opencode | off | 20 | 3.08 | 3.52 | 18714 | 2624 | 2.914 | 3.051 |
-| large bash (sidecar) | opencode | on | 20 | 3.26 | 3.6 | 18714 | 2624 | 2.908 | 3.238 |
-| large bash (sidecar off) | opencode | off | 20 | 1.6 | 1.8 | 18714 | 188 | 1.543 | 1.683 |
-| large bash (sidecar off) | opencode | on | 20 | 2.03 | 2.42 | 18714 | 188 | 1.517 | 1.727 |
-| tiny bash | pi | off | 20 | 0.71 | 1.06 | 242 | 242 | 0.062 | 0.066 |
-| tiny bash | pi | on | 20 | 1.48 | 1.86 | 242 | 242 | 0.059 | 0.065 |
-| medium bash | pi | off | 20 | 0.9 | 1.04 | 3325 | 211 | 0.262 | 0.289 |
-| medium bash | pi | on | 20 | 1.72 | 2.08 | 3325 | 211 | 0.262 | 0.283 |
-| large bash (sidecar) | pi | off | 20 | 3.66 | 3.94 | 18714 | 2632 | 2.761 | 3.144 |
-| large bash (sidecar) | pi | on | 20 | 4.87 | 5.28 | 18714 | 2632 | 2.965 | 3.146 |
-| large bash (sidecar off) | pi | off | 20 | 2.35 | 2.58 | 18714 | 188 | 1.463 | 1.693 |
-| large bash (sidecar off) | pi | on | 20 | 3.3 | 3.72 | 18714 | 188 | 1.221 | 1.409 |
-| read sidecar (bounded range) | pi | off | 20 | 0.55 | 0.64 | 2400 | 2400 | 0.213 | 0.227 |
-| read sidecar (bounded range) | pi | on | 20 | 1.09 | 1.17 | 2400 | 2400 | 0.183 | 0.197 |
-| read sidecar (unbounded) | pi | off | 20 | 1.98 | 2.29 | 19253 | 163 | 1.35 | 1.521 |
-| read sidecar (unbounded) | pi | on | 20 | 2.83 | 3.07 | 19253 | 163 | 1.341 | 1.524 |
+| tiny bash | claude | off | 20 | 57.77 | 60.97 | 242 | 242 | 0.064 | 0.265 |
+| tiny bash | claude | on | 20 | 60.64 | 65.01 | 242 | 242 | 0.053 | 0.101 |
+| tiny bash [legacy 2-process] | claude | off | 20 | 103.74 | 111.49 | 242 | 242 | 0.053 | 0.061 |
+| tiny bash [legacy 2-process] | claude | on | 20 | 105.86 | 108.32 | 242 | 242 | 0.048 | 0.06 |
+| medium bash | claude | off | 20 | 59.15 | 61.53 | 3325 | 211 | 0.226 | 0.287 |
+| medium bash | claude | on | 20 | 65.34 | 69.41 | 3325 | 211 | 0.205 | 0.23 |
+| medium bash [legacy 2-process] | claude | off | 20 | 102.78 | 105.26 | 3325 | 211 | 0.192 | 0.212 |
+| medium bash [legacy 2-process] | claude | on | 20 | 106.48 | 109.57 | 3325 | 211 | 0.198 | 0.206 |
+| large bash (sidecar) | claude | off | 20 | 65.42 | 67.16 | 18714 | 2632 | 2.174 | 2.665 |
+| large bash (sidecar) | claude | on | 20 | 69.67 | 80.29 | 18714 | 2632 | 2.053 | 2.251 |
+| large bash (sidecar) [legacy 2-process] | claude | off | 20 | 109.71 | 114.01 | 18714 | 2632 | 2.036 | 2.337 |
+| large bash (sidecar) [legacy 2-process] | claude | on | 20 | 111.36 | 122.08 | 18714 | 2632 | 1.999 | 2.217 |
+| large bash (sidecar off) | claude | off | 20 | 60.82 | 63.1 | 18714 | 188 | 1.007 | 1.119 |
+| large bash (sidecar off) | claude | on | 20 | 65.76 | 70.23 | 18714 | 188 | 1.006 | 1.104 |
+| tiny bash (small transcript) | claude | off | 20 | 56.81 | 59.71 | 242 | 242 | 0.039 | 0.047 |
+| tiny bash (small transcript) | claude | on | 20 | 61.41 | 64.95 | 242 | 242 | 0.045 | 0.055 |
+| tiny bash (small transcript) [legacy 2-process] | claude | off | 20 | 100.91 | 105.29 | 242 | 242 | 0.047 | 0.059 |
+| tiny bash (small transcript) [legacy 2-process] | claude | on | 20 | 104.68 | 107.71 | 242 | 242 | 0.04 | 0.049 |
+| tiny bash (1MB transcript) | claude | off | 20 | 63.93 | 67.25 | 242 | 242 | 0.041 | 0.056 |
+| tiny bash (1MB transcript) | claude | on | 20 | 69.17 | 80.26 | 242 | 242 | 0.045 | 0.067 |
+| tiny bash (1MB transcript) [legacy 2-process] | claude | off | 20 | 110.1 | 117.08 | 242 | 242 | 0.039 | 0.045 |
+| tiny bash (1MB transcript) [legacy 2-process] | claude | on | 20 | 116.16 | 119.77 | 242 | 242 | 0.04 | 0.05 |
+| read sidecar (bounded range) | claude | off | 20 | 53.4 | 57.03 | 2400 | 2400 | 0.171 | 0.276 |
+| read sidecar (bounded range) | claude | on | 20 | 57.53 | 59.57 | 2400 | 2400 | 0.167 | 0.25 |
+| read sidecar (unbounded) | claude | off | 20 | 64.62 | 67.04 | 19253 | 163 | 1.419 | 1.647 |
+| read sidecar (unbounded) | claude | on | 20 | 68.14 | 71.5 | 19253 | 163 | 1.337 | 1.524 |
+| tiny bash | codex | off | 20 | 56.55 | 59.99 | 242 | 242 | 0.045 | 0.071 |
+| tiny bash | codex | on | 20 | 56.49 | 61.95 | 242 | 242 | 0.044 | 0.054 |
+| medium bash | codex | off | 20 | 56.27 | 59.57 | 3325 | 211 | 0.172 | 0.186 |
+| medium bash | codex | on | 20 | 57.4 | 66.14 | 3325 | 211 | 0.172 | 0.289 |
+| large bash (sidecar) | codex | off | 20 | 62.14 | 63.91 | 18714 | 2632 | 2.014 | 2.132 |
+| large bash (sidecar) | codex | on | 20 | 62.05 | 64.88 | 18714 | 2632 | 2.039 | 2.233 |
+| large bash (sidecar off) | codex | off | 20 | 58.03 | 59.96 | 18714 | 188 | 0.999 | 1.082 |
+| large bash (sidecar off) | codex | on | 20 | 58.23 | 61.1 | 18714 | 188 | 0.963 | 1.034 |
+| tiny bash | opencode | off | 20 | 0.07 | 0.23 | 242 | 242 | 0.037 | 0.037 |
+| tiny bash | opencode | on | 20 | 0.15 | 0.23 | 242 | 242 | 0.036 | 0.046 |
+| medium bash | opencode | off | 20 | 0.2 | 0.21 | 3325 | 211 | 0.176 | 0.179 |
+| medium bash | opencode | on | 20 | 0.28 | 0.37 | 3325 | 211 | 0.176 | 0.184 |
+| large bash (sidecar) | opencode | off | 20 | 2.02 | 2.16 | 18714 | 2624 | 1.257 | 1.392 |
+| large bash (sidecar) | opencode | on | 20 | 2.12 | 2.28 | 18714 | 2624 | 1.255 | 1.377 |
+| large bash (sidecar off) | opencode | off | 20 | 1.04 | 1.15 | 18714 | 188 | 1.013 | 1.112 |
+| large bash (sidecar off) | opencode | on | 20 | 1.13 | 1.32 | 18714 | 188 | 0.994 | 1.104 |
+| tiny bash | pi | off | 20 | 0.5 | 0.71 | 242 | 242 | 0.044 | 0.05 |
+| tiny bash | pi | on | 20 | 0.94 | 1.12 | 242 | 242 | 0.044 | 0.047 |
+| medium bash | pi | off | 20 | 0.6 | 0.63 | 3325 | 211 | 0.17 | 0.173 |
+| medium bash | pi | on | 20 | 1.09 | 1.13 | 3325 | 211 | 0.176 | 0.183 |
+| large bash (sidecar) | pi | off | 20 | 2.52 | 2.63 | 18714 | 2632 | 2.009 | 2.089 |
+| large bash (sidecar) | pi | on | 20 | 3.24 | 3.5 | 18714 | 2632 | 1.958 | 2.136 |
+| large bash (sidecar off) | pi | off | 20 | 1.53 | 1.72 | 18714 | 188 | 0.962 | 1.064 |
+| large bash (sidecar off) | pi | on | 20 | 2.18 | 2.45 | 18714 | 188 | 0.937 | 1.042 |
+| read sidecar (bounded range) | pi | off | 20 | 0.42 | 0.53 | 2400 | 2400 | 0.17 | 0.176 |
+| read sidecar (bounded range) | pi | on | 20 | 0.85 | 0.94 | 2400 | 2400 | 0.166 | 0.174 |
+| read sidecar (unbounded) | pi | off | 20 | 1.76 | 2.01 | 19253 | 163 | 1.192 | 1.316 |
+| read sidecar (unbounded) | pi | on | 20 | 2.42 | 2.62 | 19253 | 163 | 1.185 | 1.288 |
+
+## Claude PostToolUse: legacy two-process vs merged one-process
+
+Same payload, same machine, same iteration count. `emitted bytes equal` confirms
+the merged hook returns byte-identical model-visible output.
+
+| scenario | telemetry | legacy p50 ms | merged p50 ms | saved ms | saved % | emitted bytes equal |
+|---|---|---:|---:|---:|---:|---|
+| tiny bash | off | 103.74 | 57.77 | 45.97 | 44.3 | yes |
+| tiny bash | on | 105.86 | 60.64 | 45.22 | 42.7 | yes |
+| medium bash | off | 102.78 | 59.15 | 43.63 | 42.4 | yes |
+| medium bash | on | 106.48 | 65.34 | 41.14 | 38.6 | yes |
+| large bash (sidecar) | off | 109.71 | 65.42 | 44.29 | 40.4 | yes |
+| large bash (sidecar) | on | 111.36 | 69.67 | 41.69 | 37.4 | yes |
+| tiny bash (small transcript) | off | 100.91 | 56.81 | 44.1 | 43.7 | yes |
+| tiny bash (small transcript) | on | 104.68 | 61.41 | 43.27 | 41.3 | yes |
+| tiny bash (1MB transcript) | off | 110.1 | 63.93 | 46.17 | 41.9 | yes |
+| tiny bash (1MB transcript) | on | 116.16 | 69.17 | 46.99 | 40.5 | yes |

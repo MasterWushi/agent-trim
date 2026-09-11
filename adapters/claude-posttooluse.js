@@ -1,11 +1,21 @@
 #!/usr/bin/env node
 'use strict';
-// Claude Code PostToolUse adapter: compress Bash tool output before it
-// reaches the model. Reads hook JSON on stdin, emits updatedToolOutput.
-// Preserves the tool_response shape: object responses get stdout/stderr/output
-// compressed field-by-field instead of being flattened into one string.
+// Claude Code's single PostToolUse hook. Two jobs, one process (a second
+// spawned hook cost ~60-105ms of pure Node startup for work measured in
+// single-digit milliseconds):
+//  1. compress Bash/Read tool output before it reaches the model, emitting
+//     updatedToolOutput. The tool_response shape is preserved: object
+//     responses get stdout/stderr/output compressed field-by-field instead of
+//     being flattened into one string.
+//  2. run the mid-turn narration meter (adapters/lib/narration.js), emitting
+//     additionalContext when the turn's narration budget is crossed.
 //
-// One transcript tail-read per fire drives three carve-outs:
+// The hook is registered without a matcher so the meter still sees every tool
+// call; TOOL_RE is the compressor's own gate and keeps compression on exactly
+// the tools the old `^(Bash|Read)$` matcher allowed.
+//
+// One transcript tail-read per fire serves both jobs and drives three
+// carve-outs:
 //  - enumeration ("list every warning") disables elision for the turn
 //  - prompt-named identifiers (`ioredis`, "W1042") always survive the cap
 //  - transcript size tightens the caps as the session grows (TRIM_ADAPTIVE=off)
@@ -32,13 +42,28 @@ const {
   sha256,
 } = require('../bin/trim-core.js');
 const { observe: observeRecovery } = require('../bin/lib/recovery-detect');
-const { lastUserPromptText } = require('./lib/transcript');
+const { lastUserPromptTextFromLines, tailReader } = require('./lib/transcript');
+const { narrationCorrection } = require('./lib/narration');
 const { readState, writeState } = require('../bin/lib/session-state');
 const { detectDuplicate } = require('../bin/lib/dup-detect');
 
 const PRESSURE_KIND = 'trim-pressure';
 function claudeHostComplete(text, isRead) {
   return hostCompleteness(text, isRead);
+}
+
+// Tools whose output is compressed. Broadening this (e.g. to include mcp__*)
+// replaces what used to be done by widening the hook's matcher.
+const TOOL_RE = (() => {
+  try {
+    return new RegExp(process.env.TRIM_TOOLS || '^(Bash|Read)$');
+  } catch {
+    return /^(Bash|Read)$/;
+  }
+})();
+function compressibleTool(name) {
+  if (typeof name !== 'string' || !name) return true; // bare harness: no tool name to gate on
+  return TOOL_RE.test(name);
 }
 
 // Once per session, the first rewrite that leaves a visible [trim marker also
@@ -72,16 +97,15 @@ function claimSessionNote(sessionId) {
   }
 }
 
-let buf = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (d) => (buf += d));
-process.stdin.on('end', () => {
+// Everything the compressor wants to emit: { updatedToolOutput?, note? }, or
+// undefined when it stays silent. Never exits — the narration meter, which
+// shares this process, still gets to run.
+function compressionOutput(evt, tail) {
   try {
-    if (process.env.TRIM_OFF === '1') return process.exit(0);
-    const evt = JSON.parse(buf);
+    if (!compressibleTool(evt.tool_name)) return;
     const command = evt.tool_input && evt.tool_input.command;
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
-    const promptText = lastUserPromptText(evt.transcript_path);
+    const promptText = lastUserPromptTextFromLines(tail() || []);
     const pressureState = readState(PRESSURE_KIND, evt.session_id);
     const observed = telemetryEnabled();
     if (String(command).includes('TRIM_OFF=1')) {
@@ -98,7 +122,7 @@ process.stdin.on('end', () => {
         }
       }
       maybeLog('claude', null, null, { command: String(command), bypass: true, recovery });
-      return process.exit(0);
+      return;
     }
     let scale = 1;
     let pressureBand = pressureState.pressureBand || 'low';
@@ -144,9 +168,9 @@ process.stdin.on('end', () => {
     if (evt.tool_name === 'Read') {
       const file = r && typeof r === 'object' ? r.file : undefined;
       const filePath = (evt.tool_input && evt.tool_input.file_path) || (file && file.filePath);
-      if (!file || typeof file.content !== 'string') return process.exit(0);
+      if (!file || typeof file.content !== 'string') return;
       const sideRead = isSidecarPath(filePath);
-      if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return process.exit(0);
+      if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return;
       const readDup = observed ? detectDuplicate(evt.session_id, file.content) : { duplicate: false, ageMs: null };
       // T7 observe-only: never affects the trim decision above, only metrics.
       let recovery;
@@ -180,7 +204,7 @@ process.stdin.on('end', () => {
           null,
           { ...logExtra, applied: false, verbatim: true }
         );
-        return process.exit(0);
+        return;
       }
       const { out, meta } = compress(file.content, {
         ...opts,
@@ -189,29 +213,24 @@ process.stdin.on('end', () => {
         hostComplete: true,
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
-      if (!meta) return process.exit(0);
+      if (!meta) return;
       if (!netWin(file.content, out, meta)) {
         maybeLog('claude-read', { inBytes: meta.inputBytes, outBytes: meta.inputBytes }, meta, { ...logExtra, applied: false });
-        return process.exit(0);
+        return;
       }
       maybeLog('claude-read', { inBytes: meta.inputBytes, outBytes: meta.outputBytes }, meta, logExtra);
-      const hookSpecificOutput = {
-        hookEventName: 'PostToolUse',
+      return {
         updatedToolOutput: { ...r, file: { ...file, content: out, numLines: out.split('\n').length } },
+        note: process.env.TRIM_NOTE !== 'off' && out.includes('[trim') && claimSessionNote(evt.session_id) ? NOTE_TEXT : undefined,
       };
-      if (process.env.TRIM_NOTE !== 'off' && out.includes('[trim') && claimSessionNote(evt.session_id)) {
-        hookSpecificOutput.additionalContext = NOTE_TEXT;
-      }
-      process.stdout.write(JSON.stringify({ hookSpecificOutput }));
-      return process.exit(0);
     }
 
-    // T8 — MCP coverage, observe mode only. Never fires under the installed
-    // ^(Bash|Read)$ matcher default; only relevant if a user has broadened
-    // their own matcher to include mcp__* tools. See adapters/lib/mcp-result.js.
+    // T8 — MCP coverage, observe mode only. Never fires under the default
+    // TOOL_RE; only relevant if a user has broadened TRIM_TOOLS to include
+    // mcp__* tools. See adapters/lib/mcp-result.js.
     if (typeof evt.tool_name === 'string' && /^mcp__/.test(evt.tool_name)) {
       const mcpMode = process.env.TRIM_MCP || 'observe';
-      if (mcpMode === 'off') return process.exit(0);
+      if (mcpMode === 'off') return;
       let allowRe;
       let denyRe;
       try {
@@ -245,17 +264,14 @@ process.stdin.on('end', () => {
       // the headline totals; a never-applied trim must not inflate savings.
       if (!applied) {
         maybeLog('claude-mcp', null, null, { command: evt.tool_name, applied: false, mcp });
-        return process.exit(0);
+        return;
       }
       maybeLog('claude-mcp', { inBytes: totals.inBytes, outBytes: totals.outBytes }, mcpMeta, {
         command: evt.tool_name,
         mcp,
         emitted: { inLines: totals.inLines, outLines: totals.outLines, inTokEst: totals.inTokEst, outTokEst: totals.outTokEst },
       });
-      process.stdout.write(
-        JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: mcpOut } })
-      );
-      return process.exit(0);
+      return { updatedToolOutput: mcpOut };
     }
 
     let updated;
@@ -266,7 +282,7 @@ process.stdin.on('end', () => {
     let inTokEst = 0;
     let outTokEst = 0;
     let bestMeta = null; // contract of the dominant field, for telemetry
-    let started = process.hrtime.bigint();
+    const started = process.hrtime.bigint();
     let allRaw = '';
     if (r && typeof r === 'object' && (r.stdout !== undefined || r.stderr !== undefined || r.output !== undefined)) {
       const next = { ...r };
@@ -292,7 +308,7 @@ process.stdin.on('end', () => {
       if (changed) updated = next;
     } else {
       const original = typeof r === 'string' ? r : typeof evt.tool_output === 'string' ? evt.tool_output : undefined;
-      if (original === undefined) return process.exit(0); // nothing we understand — leave untouched
+      if (original === undefined) return; // nothing we understand — leave untouched
       inBytes = Buffer.byteLength(original);
       allRaw = original;
       const { out, meta } = compress(original, { ...opts, hostComplete: claudeHostComplete(original, false) });
@@ -345,25 +361,63 @@ process.stdin.on('end', () => {
     // through, but duplicate incidence is still recorded.
     if (!win) {
       maybeLog('claude', { inBytes, outBytes: inBytes }, bestMeta, { ...logExtra, applied: false });
-      return process.exit(0);
+      return;
     }
     maybeLog('claude', { inBytes, outBytes }, bestMeta, {
       ...logExtra,
     });
-    const hookSpecificOutput = {
-      hookEventName: 'PostToolUse',
+    return {
       updatedToolOutput: updated,
+      note:
+        process.env.TRIM_NOTE !== 'off' &&
+        JSON.stringify(updated).includes('[trim') &&
+        claimSessionNote(evt.session_id)
+          ? NOTE_TEXT
+          : undefined,
     };
-    if (
-      process.env.TRIM_NOTE !== 'off' &&
-      JSON.stringify(updated).includes('[trim') &&
-      claimSessionNote(evt.session_id)
-    ) {
-      hookSpecificOutput.additionalContext = NOTE_TEXT;
-    }
-    process.stdout.write(JSON.stringify({ hookSpecificOutput }));
-    process.exit(0);
   } catch {
-    process.exit(0); // never block the tool on adapter failure
+    return; // never block the tool on adapter failure
   }
+}
+
+// Composition rule when more than one feature wants additionalContext: the
+// once-per-session provenance note comes first (it explains the markers the
+// same response may be introducing), the narration correction second. Both
+// are one paragraph; nothing is ever silently dropped.
+function respond(compressed, correction) {
+  const hookSpecificOutput = { hookEventName: 'PostToolUse' };
+  if (compressed && compressed.updatedToolOutput !== undefined) {
+    hookSpecificOutput.updatedToolOutput = compressed.updatedToolOutput;
+  }
+  const context = [compressed && compressed.note, correction].filter(Boolean);
+  if (context.length) hookSpecificOutput.additionalContext = context.join('\n\n');
+  if (Object.keys(hookSpecificOutput).length === 1) return; // nothing to say
+  process.stdout.write(JSON.stringify({ hookSpecificOutput }));
+}
+
+let buf = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (d) => (buf += d));
+process.stdin.on('end', () => {
+  try {
+    if (process.env.TRIM_OFF === '1') return process.exit(0);
+    let evt;
+    try {
+      evt = JSON.parse(buf);
+    } catch {
+      return process.exit(0);
+    }
+    const tail = tailReader(evt.transcript_path);
+    const compressed = compressionOutput(evt, tail);
+    let correction;
+    try {
+      correction = narrationCorrection(evt, tail());
+    } catch {
+      correction = undefined;
+    }
+    respond(compressed, correction);
+  } catch {
+    /* never block the tool on adapter failure */
+  }
+  process.exit(0);
 });

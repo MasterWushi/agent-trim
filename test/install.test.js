@@ -73,7 +73,7 @@ install();
   const cfg = settings();
   const asStr = JSON.stringify(cfg.hooks.PostToolUse);
   assert.strictEqual((asStr.match(/claude-posttooluse\.js/g) || []).length, 1, 'no duplicate compressor hook');
-  assert.strictEqual((asStr.match(/claude-narration-meter\.js/g) || []).length, 1, 'no duplicate meter hook');
+  assert.ok(!asStr.includes('claude-narration-meter.js'), 'obsolete meter hook not installed');
   const styleCount = (claudeMd().match(/<!-- trim:style:start -->/g) || []).length;
   assert.strictEqual(styleCount, 1, 'style block appended once');
 }
