@@ -86,7 +86,7 @@ Tests: new `test/pi-runtime.test.js` — repeated result idempotency, parallel d
 
 ## Verification
 - Every phase: `npm test && node bench/run.js --check` (CI must run with `TRIM_PROFILE` unset — add explicit `delete process.env.TRIM_PROFILE` in bench).
-- Phase 0/8 benchmarks give before/after byte + latency evidence; `bench/efficiency.js --check` guards regressions per-runtime.
+- Phase 0/8 benchmarks give before/after byte + latency evidence; `bench/efficiency.js --check` guards regressions per-posture.
 - Claude regression: existing `test/claude-hooks.test.js` + `test/adapters.test.js` extended; default-profile byte-identity test proves no behavior change for current users.
 - Live validation (manual, post-merge): run a Pi session with `TRIM_METRICS` set, inspect `node bin/trim-stats.js`; repeat the PalSync CRUD eval to compare against the $1.43 / 40.5K-token / 216.6K-cache-write reference.
 

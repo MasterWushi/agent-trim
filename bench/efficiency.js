@@ -13,14 +13,14 @@ const fixtures = fs
   .readdirSync(fixturesDir)
   .filter((name) => !name.startsWith('.') && fs.statSync(path.join(fixturesDir, name)).isFile())
   .sort();
-const runtimes = {
+const postures = {
   claude: { runtime: 'claude', hostComplete: true },
   pi: { runtime: 'pi', hostComplete: true },
   codex: { runtime: 'codex', hostComplete: true },
   opencode: { runtime: 'opencode', hostComplete: true },
 };
 const rows = [];
-for (const [runtime, posture] of Object.entries(runtimes)) {
+for (const [posture, options] of Object.entries(postures)) {
   for (const file of fixtures) {
     const source = fs.readFileSync(path.join(__dirname, '..', 'test', 'fixtures', file), 'utf8');
     const failing = /fail|error|eslint|audit|rustc/i.test(file);
@@ -28,12 +28,12 @@ for (const [runtime, posture] of Object.entries(runtimes)) {
     let result;
     for (let i = 0; i < 3; i++) {
       const start = process.hrtime.bigint();
-      result = compress(source, { ...posture, exitCode: failing ? 1 : 0, command: file, noSidecar: false });
+      result = compress(source, { ...options, exitCode: failing ? 1 : 0, command: file, noSidecar: false });
       samples.push(Number(process.hrtime.bigint() - start) / 1e6);
     }
     samples.sort((a, b) => a - b);
     rows.push({
-      runtime,
+      posture,
       file,
       inBytes: result.meta.inputBytes,
       outBytes: result.meta.outputBytes,
@@ -49,10 +49,10 @@ for (const [runtime, posture] of Object.entries(runtimes)) {
   }
 }
 const deterministicRows = rows.map(({ p50Ms, p95Ms, ...row }) => row);
-const byRuntime = {};
-for (const runtime of Object.keys(runtimes)) {
-  const selected = rows.filter((row) => row.runtime === runtime);
-  byRuntime[runtime] = {
+const byPosture = {};
+for (const posture of Object.keys(postures)) {
+  const selected = rows.filter((row) => row.posture === posture);
+  byPosture[posture] = {
     fixtures: selected.length,
     inBytes: selected.reduce((sum, row) => sum + row.inBytes, 0),
     outBytes: selected.reduce((sum, row) => sum + row.outBytes, 0),
@@ -63,23 +63,24 @@ const baselineFile = path.join(__dirname, 'efficiency-baseline.json');
 if (check) {
   const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
   if (JSON.stringify(baseline.rows) !== JSON.stringify(deterministicRows)) {
-    console.error('efficiency --check: deterministic fixture/runtime byte contract changed; regenerate and review bench/efficiency-baseline.json');
+    console.error('efficiency --check: deterministic fixture/posture byte contract changed; regenerate and review bench/efficiency-baseline.json');
     process.exit(1);
   }
-  console.log(`efficiency --check: ok (${rows.length} runtime-fixture replays)`);
+  console.log(`efficiency --check: ok (${rows.length} posture-fixture replays)`);
   process.exit(0);
 }
-fs.writeFileSync(baselineFile, JSON.stringify({ byRuntime, rows: deterministicRows }, null, 2) + '\n');
+fs.writeFileSync(baselineFile, JSON.stringify({ byPosture, rows: deterministicRows }, null, 2) + '\n');
 const md = [
   '# Efficiency baseline',
   '',
   'Fixture replay through each runtime posture. Latency is informational; committed byte fields are deterministic.',
   'Sidecars are disabled for portable paths, while sidecar behavior is covered by core and adapter tests.',
+  'These rows measure the core compressor under each host\'s option posture, not adapter cost; `docs/adapter-overhead.md` covers adapter cost.',
   '',
-  '| runtime | fixtures | input bytes | output bytes | ratio |',
+  '| runtime posture | fixtures | input bytes | output bytes | ratio |',
   '|---|---:|---:|---:|---:|',
 ];
-for (const [runtime, value] of Object.entries(byRuntime)) md.push(`| ${runtime} | ${value.fixtures} | ${value.inBytes} | ${value.outBytes} | ${(value.outBytes / value.inBytes).toFixed(3)} |`);
-md.push('', 'Live collection:', '', '```bash', 'touch ~/.trim-metrics.jsonl', 'node bin/trim-stats.js', '```', '', 'Run equivalent Pi and Claude tasks with the same profile and compare `byRuntime`; token values remain estimates unless provider telemetry is collected separately.', '');
+for (const [posture, value] of Object.entries(byPosture)) md.push(`| ${posture} | ${value.fixtures} | ${value.inBytes} | ${value.outBytes} | ${(value.outBytes / value.inBytes).toFixed(3)} |`);
+md.push('', 'Live collection:', '', '```bash', 'touch ~/.trim-metrics.jsonl', 'node bin/trim-stats.js', '```', '', 'Run equivalent Pi and Claude tasks with the same profile and compare `byPosture`; token values remain estimates unless provider telemetry is collected separately.', '');
 fs.writeFileSync(path.join(__dirname, '..', 'docs', 'efficiency-baseline.md'), md.join('\n'));
-console.log(`efficiency baseline written (${rows.length} runtime-fixture replays)`);
+console.log(`efficiency baseline written (${rows.length} posture-fixture replays)`);

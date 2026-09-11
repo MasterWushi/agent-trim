@@ -1,5 +1,5 @@
 {
-  "byRuntime": {
+  "byPosture": {
     "claude": {
       "fixtures": 23,
       "inBytes": 337392,
@@ -27,7 +27,7 @@
   },
   "rows": [
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "adversarial-prose.txt",
       "inBytes": 19642,
       "outBytes": 19642,
@@ -39,7 +39,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "build-fail-large.txt",
       "inBytes": 46857,
       "outBytes": 11843,
@@ -51,7 +51,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "build-pass-large.txt",
       "inBytes": 78705,
       "outBytes": 6150,
@@ -63,7 +63,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -75,7 +75,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "docker-build.txt",
       "inBytes": 52438,
       "outBytes": 2634,
@@ -87,7 +87,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "eslint.json",
       "inBytes": 8302,
       "outBytes": 620,
@@ -99,7 +99,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "gen.js",
       "inBytes": 13483,
       "outBytes": 9045,
@@ -111,7 +111,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "git-diffstat.txt",
       "inBytes": 3000,
       "outBytes": 2071,
@@ -123,7 +123,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "go-test-fail.txt",
       "inBytes": 2628,
       "outBytes": 487,
@@ -135,7 +135,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "injection-relevance.txt",
       "inBytes": 275,
       "outBytes": 275,
@@ -147,7 +147,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "injection-shaped.txt",
       "inBytes": 6588,
       "outBytes": 340,
@@ -159,7 +159,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "jest-pass.txt",
       "inBytes": 3758,
       "outBytes": 470,
@@ -171,7 +171,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "jsonl.log",
       "inBytes": 39701,
       "outBytes": 2082,
@@ -183,7 +183,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "mixed-diagnostics.txt",
       "inBytes": 396,
       "outBytes": 256,
@@ -195,7 +195,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "npm-audit.json",
       "inBytes": 1058,
       "outBytes": 276,
@@ -207,7 +207,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "npm-install.txt",
       "inBytes": 29553,
       "outBytes": 2621,
@@ -219,7 +219,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "progress-bars.txt",
       "inBytes": 8329,
       "outBytes": 131,
@@ -231,7 +231,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "pytest-fail.txt",
       "inBytes": 3514,
       "outBytes": 1285,
@@ -243,7 +243,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "rustc-diagnostics.txt",
       "inBytes": 551,
       "outBytes": 342,
@@ -255,7 +255,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "source-code.txt",
       "inBytes": 3780,
       "outBytes": 3780,
@@ -267,7 +267,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "tsc-errors.txt",
       "inBytes": 2515,
       "outBytes": 1229,
@@ -279,7 +279,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "unicode-crlf.txt",
       "inBytes": 9303,
       "outBytes": 200,
@@ -291,7 +291,7 @@
       "sidecar": false
     },
     {
-      "runtime": "claude",
+      "posture": "claude",
       "file": "vitest-fail.txt",
       "inBytes": 2884,
       "outBytes": 855,
@@ -303,7 +303,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "adversarial-prose.txt",
       "inBytes": 19642,
       "outBytes": 19642,
@@ -315,7 +315,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "build-fail-large.txt",
       "inBytes": 46857,
       "outBytes": 11843,
@@ -327,7 +327,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "build-pass-large.txt",
       "inBytes": 78705,
       "outBytes": 6150,
@@ -339,7 +339,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -351,7 +351,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "docker-build.txt",
       "inBytes": 52438,
       "outBytes": 2634,
@@ -363,7 +363,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "eslint.json",
       "inBytes": 8302,
       "outBytes": 620,
@@ -375,7 +375,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "gen.js",
       "inBytes": 13483,
       "outBytes": 9045,
@@ -387,7 +387,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "git-diffstat.txt",
       "inBytes": 3000,
       "outBytes": 2071,
@@ -399,7 +399,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "go-test-fail.txt",
       "inBytes": 2628,
       "outBytes": 487,
@@ -411,7 +411,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "injection-relevance.txt",
       "inBytes": 275,
       "outBytes": 275,
@@ -423,7 +423,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "injection-shaped.txt",
       "inBytes": 6588,
       "outBytes": 340,
@@ -435,7 +435,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "jest-pass.txt",
       "inBytes": 3758,
       "outBytes": 470,
@@ -447,7 +447,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "jsonl.log",
       "inBytes": 39701,
       "outBytes": 2082,
@@ -459,7 +459,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "mixed-diagnostics.txt",
       "inBytes": 396,
       "outBytes": 256,
@@ -471,7 +471,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "npm-audit.json",
       "inBytes": 1058,
       "outBytes": 276,
@@ -483,7 +483,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "npm-install.txt",
       "inBytes": 29553,
       "outBytes": 2621,
@@ -495,7 +495,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "progress-bars.txt",
       "inBytes": 8329,
       "outBytes": 131,
@@ -507,7 +507,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "pytest-fail.txt",
       "inBytes": 3514,
       "outBytes": 1285,
@@ -519,7 +519,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "rustc-diagnostics.txt",
       "inBytes": 551,
       "outBytes": 342,
@@ -531,7 +531,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "source-code.txt",
       "inBytes": 3780,
       "outBytes": 3780,
@@ -543,7 +543,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "tsc-errors.txt",
       "inBytes": 2515,
       "outBytes": 1229,
@@ -555,7 +555,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "unicode-crlf.txt",
       "inBytes": 9303,
       "outBytes": 200,
@@ -567,7 +567,7 @@
       "sidecar": false
     },
     {
-      "runtime": "pi",
+      "posture": "pi",
       "file": "vitest-fail.txt",
       "inBytes": 2884,
       "outBytes": 855,
@@ -579,7 +579,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "adversarial-prose.txt",
       "inBytes": 19642,
       "outBytes": 19642,
@@ -591,7 +591,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "build-fail-large.txt",
       "inBytes": 46857,
       "outBytes": 11843,
@@ -603,7 +603,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "build-pass-large.txt",
       "inBytes": 78705,
       "outBytes": 6150,
@@ -615,7 +615,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -627,7 +627,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "docker-build.txt",
       "inBytes": 52438,
       "outBytes": 2634,
@@ -639,7 +639,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "eslint.json",
       "inBytes": 8302,
       "outBytes": 620,
@@ -651,7 +651,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "gen.js",
       "inBytes": 13483,
       "outBytes": 9045,
@@ -663,7 +663,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "git-diffstat.txt",
       "inBytes": 3000,
       "outBytes": 2071,
@@ -675,7 +675,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "go-test-fail.txt",
       "inBytes": 2628,
       "outBytes": 487,
@@ -687,7 +687,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "injection-relevance.txt",
       "inBytes": 275,
       "outBytes": 275,
@@ -699,7 +699,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "injection-shaped.txt",
       "inBytes": 6588,
       "outBytes": 340,
@@ -711,7 +711,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "jest-pass.txt",
       "inBytes": 3758,
       "outBytes": 470,
@@ -723,7 +723,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "jsonl.log",
       "inBytes": 39701,
       "outBytes": 2082,
@@ -735,7 +735,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "mixed-diagnostics.txt",
       "inBytes": 396,
       "outBytes": 256,
@@ -747,7 +747,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "npm-audit.json",
       "inBytes": 1058,
       "outBytes": 276,
@@ -759,7 +759,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "npm-install.txt",
       "inBytes": 29553,
       "outBytes": 2621,
@@ -771,7 +771,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "progress-bars.txt",
       "inBytes": 8329,
       "outBytes": 131,
@@ -783,7 +783,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "pytest-fail.txt",
       "inBytes": 3514,
       "outBytes": 1285,
@@ -795,7 +795,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "rustc-diagnostics.txt",
       "inBytes": 551,
       "outBytes": 342,
@@ -807,7 +807,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "source-code.txt",
       "inBytes": 3780,
       "outBytes": 3780,
@@ -819,7 +819,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "tsc-errors.txt",
       "inBytes": 2515,
       "outBytes": 1229,
@@ -831,7 +831,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "unicode-crlf.txt",
       "inBytes": 9303,
       "outBytes": 200,
@@ -843,7 +843,7 @@
       "sidecar": false
     },
     {
-      "runtime": "codex",
+      "posture": "codex",
       "file": "vitest-fail.txt",
       "inBytes": 2884,
       "outBytes": 855,
@@ -855,7 +855,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "adversarial-prose.txt",
       "inBytes": 19642,
       "outBytes": 19642,
@@ -867,7 +867,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "build-fail-large.txt",
       "inBytes": 46857,
       "outBytes": 11843,
@@ -879,7 +879,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "build-pass-large.txt",
       "inBytes": 78705,
       "outBytes": 6150,
@@ -891,7 +891,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -903,7 +903,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "docker-build.txt",
       "inBytes": 52438,
       "outBytes": 2634,
@@ -915,7 +915,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "eslint.json",
       "inBytes": 8302,
       "outBytes": 620,
@@ -927,7 +927,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "gen.js",
       "inBytes": 13483,
       "outBytes": 9045,
@@ -939,7 +939,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "git-diffstat.txt",
       "inBytes": 3000,
       "outBytes": 2071,
@@ -951,7 +951,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "go-test-fail.txt",
       "inBytes": 2628,
       "outBytes": 487,
@@ -963,7 +963,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "injection-relevance.txt",
       "inBytes": 275,
       "outBytes": 275,
@@ -975,7 +975,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "injection-shaped.txt",
       "inBytes": 6588,
       "outBytes": 340,
@@ -987,7 +987,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "jest-pass.txt",
       "inBytes": 3758,
       "outBytes": 470,
@@ -999,7 +999,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "jsonl.log",
       "inBytes": 39701,
       "outBytes": 2082,
@@ -1011,7 +1011,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "mixed-diagnostics.txt",
       "inBytes": 396,
       "outBytes": 256,
@@ -1023,7 +1023,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "npm-audit.json",
       "inBytes": 1058,
       "outBytes": 276,
@@ -1035,7 +1035,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "npm-install.txt",
       "inBytes": 29553,
       "outBytes": 2621,
@@ -1047,7 +1047,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "progress-bars.txt",
       "inBytes": 8329,
       "outBytes": 131,
@@ -1059,7 +1059,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "pytest-fail.txt",
       "inBytes": 3514,
       "outBytes": 1285,
@@ -1071,7 +1071,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "rustc-diagnostics.txt",
       "inBytes": 551,
       "outBytes": 342,
@@ -1083,7 +1083,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "source-code.txt",
       "inBytes": 3780,
       "outBytes": 3780,
@@ -1095,7 +1095,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "tsc-errors.txt",
       "inBytes": 2515,
       "outBytes": 1229,
@@ -1107,7 +1107,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "unicode-crlf.txt",
       "inBytes": 9303,
       "outBytes": 200,
@@ -1119,7 +1119,7 @@
       "sidecar": false
     },
     {
-      "runtime": "opencode",
+      "posture": "opencode",
       "file": "vitest-fail.txt",
       "inBytes": 2884,
       "outBytes": 855,

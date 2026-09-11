@@ -213,8 +213,9 @@ tests, JSONL logs, adversarial prose, injection-shaped text, CRLF/unicode)
 and checks that every unique error survives; `--check` gates regressions
 against `bench/baseline.json`. Before/after numbers for the strategy layer
 are in `bench/before-after.md`.
-`node bench/efficiency.js --check` replays the corpus under Claude/Pi/Codex/
-OpenCode postures; `node bench/perf.js --check` guards 1/10 MB throughput.
+`node bench/efficiency.js --check` replays the corpus through `compress()`
+under each host's option posture (Claude/Pi/Codex/OpenCode) — core compressor
+cost, not adapter cost; `node bench/perf.js --check` guards 1/10 MB throughput.
 `node bench/adapter.js` (or `npm run bench:adapter`) times the real adapter
 entry points — spawned Claude/Codex hook processes and the in-process Pi/
 OpenCode handlers — against `compress()` on the same payload, and writes the
