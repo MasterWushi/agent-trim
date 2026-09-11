@@ -215,6 +215,10 @@ against `bench/baseline.json`. Before/after numbers for the strategy layer
 are in `bench/before-after.md`.
 `node bench/efficiency.js --check` replays the corpus under Claude/Pi/Codex/
 OpenCode postures; `node bench/perf.js --check` guards 1/10 MB throughput.
+`node bench/adapter.js` (or `npm run bench:adapter`) times the real adapter
+entry points — spawned Claude/Codex hook processes and the in-process Pi/
+OpenCode handlers — against `compress()` on the same payload, and writes the
+results to `docs/adapter-overhead.md`.
 
 If an adapter ever fails, it fails open — the tool output passes through unmodified. Compression never blocks or breaks a tool call.
 
