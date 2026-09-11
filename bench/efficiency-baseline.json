@@ -3,25 +3,25 @@
     "claude": {
       "fixtures": 23,
       "inBytes": 337392,
-      "outBytes": 66687,
+      "outBytes": 66766,
       "sidecars": 0
     },
     "pi": {
       "fixtures": 23,
       "inBytes": 337392,
-      "outBytes": 66687,
+      "outBytes": 66766,
       "sidecars": 0
     },
     "codex": {
       "fixtures": 23,
       "inBytes": 337392,
-      "outBytes": 66687,
+      "outBytes": 66766,
       "sidecars": 0
     },
     "opencode": {
       "fixtures": 23,
       "inBytes": 337392,
-      "outBytes": 66687,
+      "outBytes": 66766,
       "sidecars": 0
     }
   },
@@ -198,7 +198,7 @@
       "runtime": "claude",
       "file": "npm-audit.json",
       "inBytes": 1058,
-      "outBytes": 197,
+      "outBytes": 276,
       "strategy": "npm-audit",
       "lossy": true,
       "omittedLines": 5,
@@ -474,7 +474,7 @@
       "runtime": "pi",
       "file": "npm-audit.json",
       "inBytes": 1058,
-      "outBytes": 197,
+      "outBytes": 276,
       "strategy": "npm-audit",
       "lossy": true,
       "omittedLines": 5,
@@ -750,7 +750,7 @@
       "runtime": "codex",
       "file": "npm-audit.json",
       "inBytes": 1058,
-      "outBytes": 197,
+      "outBytes": 276,
       "strategy": "npm-audit",
       "lossy": true,
       "omittedLines": 5,
@@ -1026,7 +1026,7 @@
       "runtime": "opencode",
       "file": "npm-audit.json",
       "inBytes": 1058,
-      "outBytes": 197,
+      "outBytes": 276,
       "strategy": "npm-audit",
       "lossy": true,
       "omittedLines": 5,

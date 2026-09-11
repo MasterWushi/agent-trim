@@ -5,10 +5,10 @@ Sidecars are disabled for portable paths, while sidecar behavior is covered by c
 
 | runtime | fixtures | input bytes | output bytes | ratio |
 |---|---:|---:|---:|---:|
-| claude | 23 | 337392 | 66687 | 0.198 |
-| pi | 23 | 337392 | 66687 | 0.198 |
-| codex | 23 | 337392 | 66687 | 0.198 |
-| opencode | 23 | 337392 | 66687 | 0.198 |
+| claude | 23 | 337392 | 66766 | 0.198 |
+| pi | 23 | 337392 | 66766 | 0.198 |
+| codex | 23 | 337392 | 66766 | 0.198 |
+| opencode | 23 | 337392 | 66766 | 0.198 |
 
 Live collection:
 

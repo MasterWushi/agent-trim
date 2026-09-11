@@ -182,6 +182,10 @@ const run = (name, opts) => compress(fx(name), { noSidecar: true, ...opts });
   const { out, meta } = run('npm-audit.json', { exitCode: 1, command: 'npm audit --json' });
   assert.strictEqual(meta.strategy, 'npm-audit');
   assert.ok(out.includes('critical 1') && out.includes('critical gamma') && out.includes('prototype pollution'));
+  assert.ok(/^high alpha .*\[direct; fix available\]$/m.test(out), 'direct dependency with a fix is flagged');
+  assert.ok(/^moderate beta .*\[transitive; fix: beta@2\.0\.0 \(major\)\]$/m.test(out), 'transitive dependency reports the fix that clears it');
+  assert.ok(/^critical gamma .*\[direct; no fix\]$/m.test(out), 'direct dependency with no fix is flagged');
+  assert.ok(!out.includes('node_modules'), 'dependency node structures still dropped');
 }
 // array-valued vulnerabilities from another scanner must not be claimed
 {
@@ -211,6 +215,27 @@ const run = (name, opts) => compress(fx(name), { noSidecar: true, ...opts });
   assert.ok(out.includes('expected `u32`, found `String`'), 'code frame preserved');
   assert.ok(out.includes('E0308 ×2') && out.includes('src/a.rs:10') && out.includes('src/b.rs:20'), 'repeat locations summarized');
   assert.ok(out.includes('aborting due to 2 previous errors'), 'tail diagnostic preserved');
+}
+// ---- repeated diagnostics: every file:line edit anchor survives verbatim ----
+{
+  for (const n of [2, 5, 20, 500]) {
+    const locations = [];
+    const lines = [];
+    for (let i = 0; i < n; i++) {
+      const loc = `src/gen${String(i).padStart(3, '0')}.rs:10`;
+      locations.push(loc);
+      lines.push(
+        'error[E0308]: mismatched types',
+        ` --> ${loc}:5`,
+        '  |',
+        '10 |     value',
+        '  |     ^^^^^ expected `u32`, found `String`'
+      );
+    }
+    const { out, meta } = compress(lines.join('\n'), { exitCode: 1, command: 'cargo check', noSidecar: true });
+    for (const loc of locations) assert.ok(out.includes(loc), `${n} occurrences: ${loc} anchor kept`);
+    if (n >= 5) assert.strictEqual(meta.strategy, 'diagnostic-block', `${n} occurrences use the diagnostic strategy`);
+  }
 }
 
 // ---- mixed content is uncertain and falls through ----

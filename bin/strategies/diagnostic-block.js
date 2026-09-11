@@ -54,7 +54,7 @@ module.exports = {
     const out = [];
     for (const group of groups.values()) {
       out.push(group.body);
-      if (group.locations.length > 1) out.push(`${group.code} ×${group.locations.length} (${group.locations.slice(0, 3).join(', ')})`);
+      if (group.locations.length > 1) out.push(`${group.code} ×${group.locations.length} (${group.locations.join(', ')})`);
       out.push('');
     }
     const renderedBlocks = out.join('\n');

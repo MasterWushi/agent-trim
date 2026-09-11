@@ -14,6 +14,14 @@ module.exports = {
     }
     const plainObject = (item) =>
       !!item && typeof item === 'object' && !Array.isArray(item) && [Object.prototype, null].includes(Object.getPrototypeOf(item));
+    const fixLabel = (fix) =>
+      fix === true
+        ? 'fix available'
+        : fix === false
+          ? 'no fix'
+          : fix && typeof fix === 'object'
+            ? `fix: ${fix.name || '?'}@${fix.version || '?'}${fix.isSemVerMajor ? ' (major)' : ''}`
+            : '';
     if (!value || typeof value !== 'object' || !plainObject(value.vulnerabilities)) return null;
     const metadata = value.metadata && value.metadata.vulnerabilities;
     if (!commandMatch && !plainObject(metadata)) return null;
@@ -25,7 +33,12 @@ module.exports = {
       const via = Array.isArray(item.via)
         ? item.via.map((v) => (typeof v === 'string' ? v : v && (v.title || v.source))).filter(Boolean).slice(0, 3).join('; ')
         : '';
-      out.push(`${item.severity || 'unknown'} ${name}${item.range ? ` ${item.range}` : ''}${via ? ` — ${via}` : ''}`);
+      const directness = item.isDirect === true ? 'direct' : item.isDirect === false ? 'transitive' : '';
+      const flags = [directness, fixLabel(item.fixAvailable)].filter(Boolean);
+      out.push(
+        `${item.severity || 'unknown'} ${name}${item.range ? ` ${item.range}` : ''}${via ? ` — ${via}` : ''}` +
+          (flags.length ? ` [${flags.join('; ')}]` : '')
+      );
     }
     if (value.metadata && value.metadata.totalDependencies !== undefined) out.push(`dependencies: ${value.metadata.totalDependencies}`);
     return { out: out.join('\n'), lossy: true, reason: 'npm audit vulnerabilities summarized by package and severity' };
