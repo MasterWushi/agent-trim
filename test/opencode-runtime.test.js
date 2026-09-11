@@ -9,6 +9,8 @@
 // opencode (the tool call itself errors), so the handler must swallow
 // everything.
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { afterToolExecute, Trim } = require('../adapters/lib/opencode-runtime.js');
 
 const big = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`).join('\n');
@@ -82,6 +84,29 @@ const big = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`).j
       await afterToolExecute(input, output); // must not reject
     }
     assert.ok(true, 'no input shape throws out of the handler');
+  }
+
+  // --- metrics record exactly the bytes returned ---
+  {
+    const metrics = path.join(require('os').tmpdir(), `trim-opencode-metrics-${process.pid}.jsonl`);
+    process.env.TRIM_METRICS = metrics;
+    const output = { output: big };
+    await afterToolExecute({ args: { command: 'npm install' } }, output);
+    let rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim().split('\n').pop());
+    assert.strictEqual(rec.inBytes, Buffer.byteLength(big));
+    assert.strictEqual(rec.outBytes, Buffer.byteLength(output.output), 'string metrics match the bytes returned');
+
+    const blockA = Array.from({ length: 700 }, (_, i) => `row ${i} ok`).join('\n');
+    const blockB = `${'x'.repeat(100)}\x1b[31mred\x1b[0m`;
+    const mcp = { content: [{ type: 'text', text: blockA }, { type: 'text', text: blockB }] };
+    await afterToolExecute({ args: {} }, mcp);
+    const returned = Buffer.byteLength(mcp.content[0].text) + Buffer.byteLength(mcp.content[1].text);
+    rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim().split('\n').pop());
+    assert.strictEqual(rec.tag, 'opencode-mcp');
+    assert.strictEqual(rec.inBytes, Buffer.byteLength(blockA) + Buffer.byteLength(blockB));
+    assert.strictEqual(rec.outBytes, returned, 'multi-block metrics match the bytes returned');
+    delete process.env.TRIM_METRICS;
+    fs.rmSync(metrics, { force: true });
   }
 
   console.log('opencode-runtime.test.js: all assertions passed');

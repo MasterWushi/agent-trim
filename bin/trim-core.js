@@ -730,18 +730,37 @@ function buildMeta(text, out, o, extra) {
   };
 }
 
-// Single net-win decision for every adapter. A candidate must be smaller in
-// bytes AND in estimated tokens: dense output can shrink in bytes while
-// tokenizing no cheaper, and the marker we add is itself tokens.
-function netWin(inText, outText) {
+// Aggregate form of netWin for adapters that compress several blocks and
+// decide once: the caller passes the byte totals of the model-visible result
+// and the token estimates it already has, so nothing is measured twice.
+function netWinTotals(inBytes, outBytes, inTokens, outTokens) {
   try {
-    if (outText === undefined || outText === null) return false;
-    const byteWin = Buffer.byteLength(inText) - Buffer.byteLength(outText);
-    if (!(byteWin >= 32)) return false;
-    const { estimate } = require('./lib/token-estimate');
-    const tokenWin = estimate(inText).tokens - estimate(outText).tokens;
+    if (!Number.isFinite(inBytes) || !Number.isFinite(outBytes)) return false;
+    if (!(inBytes - outBytes >= 32)) return false;
+    const tokenWin = inTokens - outTokens;
     if (!Number.isFinite(tokenWin)) return false;
     return tokenWin >= Number(process.env.TRIM_NET_WIN_TOKENS || 24);
+  } catch {
+    return false; // fail closed on the *decision*: keep the original text
+  }
+}
+
+// Single net-win decision for every adapter. A candidate must be smaller in
+// bytes AND in estimated tokens: dense output can shrink in bytes while
+// tokenizing no cheaper, and the marker we add is itself tokens. `meta`, when
+// given, is the compress() result contract — its byte counts and token
+// estimates are reused instead of re-measuring the same strings.
+function netWin(inText, outText, meta) {
+  try {
+    if (outText === undefined || outText === null) return false;
+    const m = meta && Number.isFinite(meta.inputBytes) && Number.isFinite(meta.outputBytes) ? meta : null;
+    const inBytes = m ? m.inputBytes : Buffer.byteLength(inText);
+    const outBytes = m ? m.outputBytes : Buffer.byteLength(outText);
+    if (m && Number.isFinite(m.inputTokenEstimate) && Number.isFinite(m.outputTokenEstimate)) {
+      return netWinTotals(inBytes, outBytes, m.inputTokenEstimate, m.outputTokenEstimate);
+    }
+    const { estimate } = require('./lib/token-estimate');
+    return netWinTotals(inBytes, outBytes, estimate(inText).tokens, estimate(outText).tokens);
   } catch {
     return false; // fail closed on the *decision*: keep the original text
   }
@@ -971,17 +990,40 @@ function metricsPath() {
   return fs.existsSync(p) ? p : null;
 }
 
+function debugLogPath() {
+  const fs = require('fs');
+  if (process.env.TRIM_LOG) return process.env.TRIM_LOG;
+  const p = require('os').homedir() + '/.trim-debug';
+  return fs.existsSync(p) ? p : null;
+}
+
+// Observe-only instrumentation (duplicate/recovery rings, MCP counterfactuals)
+// costs a hash and synchronous state I/O per tool result, and nothing consumes
+// it unless a metrics or debug sink exists. Callers check this first and skip
+// the whole observation when it is off.
+function telemetryEnabled() {
+  try {
+    return !!(metricsPath() || debugLogPath());
+  } catch {
+    return false;
+  }
+}
+
 function maybeLog(tag, stats, meta, extra) {
   try {
     const fs = require('fs');
     if (stats) {
-      const dbg = require('os').homedir() + '/.trim-debug';
-      const path = process.env.TRIM_LOG || (fs.existsSync(dbg) ? dbg : null);
-      if (path) fs.appendFileSync(path, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
+      const dbg = debugLogPath();
+      if (dbg) fs.appendFileSync(dbg, `${new Date().toISOString()} ${tag} ${stats.inBytes} -> ${stats.outBytes}\n`);
     }
     const mPath = metricsPath();
     if (mPath) {
       const e = extra || {};
+      // `emitted` (optional): line/token totals of the result the adapter
+      // actually returned, for adapters that compress several blocks and
+      // decide once. Byte totals come from `stats`.
+      const em = e.emitted && typeof e.emitted === 'object' ? e.emitted : null;
+      const pick = (key, fallback) => (em && Number.isFinite(em[key]) ? em[key] : fallback);
       const rec = {
         ts: new Date().toISOString(),
         tag,
@@ -990,10 +1032,10 @@ function maybeLog(tag, stats, meta, extra) {
               strategy: meta.strategy,
               changed: e.applied === false ? false : meta.changed,
               lossy: e.applied === false ? false : meta.lossy,
-              inBytes: meta.inputBytes,
-              outBytes: e.applied === false ? meta.inputBytes : meta.outputBytes,
-              inLines: meta.inputLines,
-              outLines: e.applied === false ? meta.inputLines : meta.outputLines,
+              inBytes: stats ? stats.inBytes : meta.inputBytes,
+              outBytes: stats ? stats.outBytes : e.applied === false ? meta.inputBytes : meta.outputBytes,
+              inLines: pick('inLines', meta.inputLines),
+              outLines: pick('outLines', e.applied === false ? meta.inputLines : meta.outputLines),
               omittedLines: e.applied === false ? 0 : meta.omittedLines,
               errors: meta.preservedErrors,
               warnings: meta.preservedWarnings,
@@ -1001,8 +1043,8 @@ function maybeLog(tag, stats, meta, extra) {
               hostTruncated: meta.hostComplete === false,
               runtime: meta.runtime,
               profile: meta.profile,
-              inTokEst: meta.inputTokenEstimate,
-              outTokEst: e.applied === false ? meta.inputTokenEstimate : meta.outputTokenEstimate,
+              inTokEst: pick('inTokEst', meta.inputTokenEstimate),
+              outTokEst: pick('outTokEst', e.applied === false ? meta.inputTokenEstimate : meta.outputTokenEstimate),
               tokenClass: meta.tokenClass,
               estimator: meta.estimator,
             }
@@ -1066,6 +1108,8 @@ module.exports = {
   alreadyCondensed,
   condensedEnvelope,
   netWin,
+  netWinTotals,
+  telemetryEnabled,
   commandFingerprint,
 };
 

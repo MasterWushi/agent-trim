@@ -104,4 +104,18 @@ for (const mode of ['observe', 'on']) {
   assert.strictEqual(out.content.length, input.content.length, 'block count/order preserved, not flattened');
 }
 
+// the aggregate gate is the whole result's, not each block's
+{
+  const input = {
+    content: [
+      { type: 'text', text: `${'x'.repeat(200)}\x1b[31mred\x1b[0m` },
+      { type: 'text', text: `${'y'.repeat(200)}\x1b[32mgreen\x1b[0m` },
+    ],
+  };
+  const { out, applied, totals } = processMcpResult(input, { toolName: 'mcp__test__thing', mode: 'on', allowRe: /.*/ });
+  assert.strictEqual(applied, false, 'per-block savings below the aggregate gate never apply');
+  assert.strictEqual(out, input, 'result returned untouched');
+  assert.ok(totals.inBytes > totals.outBytes, 'counterfactual still measured');
+}
+
 console.log('mcp-result.test.js: all assertions passed');

@@ -129,6 +129,81 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   assert.ok(!fs.existsSync(metrics), 'TRIM_MCP=off writes nothing');
   fs.rmSync(metrics, { force: true });
 }
+// Claude final gate: recorded bytes are the bytes of the emitted result, not
+// of the dominant field's attempt
+{
+  const metrics = path.join(os.tmpdir(), `trim-claude-netwin-${process.pid}.jsonl`);
+  const stdout = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`).join('\n');
+  const stderr = Array.from({ length: 120 }, (_, i) => `warn: package-${i} peer mismatch`).join('\n');
+  const evt = {
+    tool_name: 'Bash',
+    tool_input: { command: 'npm install' },
+    tool_response: { stdout, stderr },
+    session_id: 'claude-netwin',
+  };
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_METRICS: metrics });
+  assert.strictEqual(r.status, 0);
+  const u = JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput;
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.inBytes, Buffer.byteLength(stdout) + Buffer.byteLength(stderr));
+  assert.strictEqual(
+    rec.outBytes,
+    Buffer.byteLength(u.stdout) + Buffer.byteLength(u.stderr),
+    'recorded output bytes equal the bytes returned'
+  );
+  assert.strictEqual(rec.changed, true);
+  fs.rmSync(metrics, { force: true });
+}
+// Multi-block MCP: one aggregate gate, and metrics that match the result
+{
+  const metrics = path.join(os.tmpdir(), `trim-mcp-applied-${process.pid}.jsonl`);
+  const blockA = Array.from({ length: 800 }, (_, i) => `mcp row ${i} ${'y'.repeat(i % 7)}`).join('\n');
+  const blockB = Array.from({ length: 400 }, (_, i) => `mcp row ${i} ${'z'.repeat(i % 5)}`).join('\n');
+  const evt = {
+    tool_name: 'mcp__demo__query',
+    tool_input: {},
+    tool_response: { content: [{ type: 'text', text: blockA }, { type: 'text', text: blockB }] },
+    session_id: 'mcp-applied',
+  };
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), {
+    TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_MCP: 'on', TRIM_MCP_ALLOW_RE: '^mcp__demo__',
+  });
+  assert.strictEqual(r.status, 0);
+  const u = JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput;
+  assert.strictEqual(u.content.length, 2, 'block count and order preserved');
+  const returned = Buffer.byteLength(u.content[0].text) + Buffer.byteLength(u.content[1].text);
+  const original = Buffer.byteLength(blockA) + Buffer.byteLength(blockB);
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.tag, 'claude-mcp');
+  assert.strictEqual(rec.applied, undefined, 'an applied transform is not marked unapplied');
+  assert.strictEqual(rec.inBytes, original, 'recorded input bytes match the payload considered');
+  assert.strictEqual(rec.outBytes, returned, 'recorded output bytes match the bytes returned');
+  assert.ok(rec.outBytes < rec.inBytes, 'aggregate saving recorded');
+  fs.rmSync(metrics, { force: true });
+}
+// Observe-only telemetry is skipped entirely when no sink consumes it
+{
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'trim-home-'));
+  const id = `telemetry-off-${process.pid}`;
+  const evt = {
+    tool_name: 'Read',
+    tool_input: { file_path: '/var/logs/app.log' },
+    tool_response: { file: { filePath: '/var/logs/app.log', content: bigOut, numLines: 900 } },
+    session_id: id,
+  };
+  fs.rmSync(statePath('trim-dup', id), { force: true });
+  const off = run('claude-posttooluse.js', JSON.stringify(evt), {
+    TRIM_NOTE: 'off', TRIM_METRICS: '', TRIM_LOG: '', HOME: home,
+  });
+  assert.strictEqual(off.status, 0);
+  assert.ok(!fs.existsSync(statePath('trim-dup', id)), 'no duplicate-detection state without a metrics/debug sink');
+  const metrics = path.join(os.tmpdir(), `trim-telemetry-${process.pid}.jsonl`);
+  run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_METRICS: metrics, HOME: home });
+  assert.ok(fs.existsSync(statePath('trim-dup', id)), 'duplicate detection runs when a sink exists');
+  fs.rmSync(metrics, { force: true });
+  fs.rmSync(statePath('trim-dup', id), { force: true });
+  fs.rmSync(home, { recursive: true, force: true });
+}
 // unavailable transcript preserves the prior pressure band
 {
   const id = `pressure-preserve-${process.pid}`;
@@ -195,6 +270,21 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   const r = run('codex-posttooluse.js', JSON.stringify(evt));
   assert.strictEqual(r.status, 0, 'small output passes');
   assert.strictEqual(r.stderr, '');
+}
+// codex: a compression the final gate rejects is not recorded as a saving
+{
+  const metrics = path.join(os.tmpdir(), `trim-codex-netwin-${process.pid}.jsonl`);
+  const attempted = `${'x'.repeat(100)}\x1b[31mred\x1b[0m`;
+  const evt = { tool_input: { command: 'ls' }, tool_response: { stdout: attempted, exit_code: 0 } };
+  const r = run('codex-posttooluse.js', JSON.stringify(evt), { TRIM_METRICS: metrics });
+  assert.strictEqual(r.status, 0, 'below-gate compression is not emitted');
+  assert.strictEqual(r.stderr, '');
+  const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(rec.applied, false);
+  assert.strictEqual(rec.changed, false);
+  assert.strictEqual(rec.inBytes, Buffer.byteLength(attempted));
+  assert.strictEqual(rec.outBytes, rec.inBytes, 'recorded output bytes equal what was returned');
+  fs.rmSync(metrics, { force: true });
 }
 
 // ---- hooks that must stay silent ----

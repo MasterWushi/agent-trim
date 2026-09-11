@@ -32,8 +32,12 @@ process.stdin.on('end', () => {
       sessionId: evt.session_id || evt.thread_id,
       hostMayTruncate: true, // shell output; the harness may cut before we see it
     });
-    maybeLog('codex', stats, meta, { command: typeof command === 'string' ? command : undefined });
-    if (!netWin(original, out)) return process.exit(0);
+    const win = netWin(original, out, meta);
+    maybeLog('codex', win ? stats : { inBytes: meta.inputBytes, outBytes: meta.inputBytes }, meta, {
+      command: typeof command === 'string' ? command : undefined,
+      applied: win ? undefined : false,
+    });
+    if (!win) return process.exit(0);
     process.stderr.write(out);
     process.exit(2);
   } catch {

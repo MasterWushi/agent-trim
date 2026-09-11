@@ -25,6 +25,8 @@ const {
   isSidecarPath,
   hostCompleteness,
   netWin,
+  netWinTotals,
+  telemetryEnabled,
   commandFingerprint,
   sha256,
 } = require('../bin/trim-core.js');
@@ -80,16 +82,19 @@ process.stdin.on('end', () => {
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
     const promptText = lastUserPromptText(evt.transcript_path);
     const pressureState = readState(PRESSURE_KIND, evt.session_id);
+    const observed = telemetryEnabled();
     if (String(command).includes('TRIM_OFF=1')) {
       let recovery;
-      try {
-        recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
-          commandFingerprint: commandFingerprint(command),
-          bypass: true,
-          ts: Date.now(),
-        });
-      } catch {
-        recovery = undefined;
+      if (observed) {
+        try {
+          recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+            commandFingerprint: commandFingerprint(command),
+            bypass: true,
+            ts: Date.now(),
+          });
+        } catch {
+          recovery = undefined;
+        }
       }
       maybeLog('claude', null, null, { command: String(command), bypass: true, recovery });
       return process.exit(0);
@@ -148,33 +153,35 @@ process.stdin.on('end', () => {
         hostComplete: true,
         noSidecar: sideRead, // never re-sidecar a sidecar, or its middle becomes unreachable
       });
-      const readDup = detectDuplicate(evt.session_id, file.content);
+      if (!meta) return process.exit(0);
+      const readDup = observed ? detectDuplicate(evt.session_id, file.content) : { duplicate: false, ageMs: null };
       // T7 observe-only: never affects the trim decision above, only metrics.
       let recovery;
-      try {
-        recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
-          isSidecarRead: sideRead,
-          filePath,
-          range: evt.tool_input && `${evt.tool_input.offset || 0}-${evt.tool_input.limit || ''}`,
-          contentHash: sha256(file.content),
-          ts: Date.now(),
-        });
-      } catch {
-        recovery = undefined;
+      if (observed) {
+        try {
+          recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+            isSidecarRead: sideRead,
+            filePath,
+            range: evt.tool_input && `${evt.tool_input.offset || 0}-${evt.tool_input.limit || ''}`,
+            contentHash: sha256(file.content),
+            ts: Date.now(),
+          });
+        } catch {
+          recovery = undefined;
+        }
       }
-      if (!netWin(file.content, out)) {
-        maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
-          command: filePath, applied: false, durMs: 0, dupExact: readDup.duplicate, dupAgeMs: readDup.ageMs, recovery,
-        });
-        return process.exit(0);
-      }
-      maybeLog('claude-read', { inBytes: Buffer.byteLength(file.content), outBytes: Buffer.byteLength(out) }, meta, {
+      const logExtra = {
         command: filePath,
         durMs: 0,
         dupExact: readDup.duplicate,
         dupAgeMs: readDup.ageMs,
         recovery,
-      });
+      };
+      if (!netWin(file.content, out, meta)) {
+        maybeLog('claude-read', { inBytes: meta.inputBytes, outBytes: meta.inputBytes }, meta, { ...logExtra, applied: false });
+        return process.exit(0);
+      }
+      maybeLog('claude-read', { inBytes: meta.inputBytes, outBytes: meta.outputBytes }, meta, logExtra);
       const hookSpecificOutput = {
         hookEventName: 'PostToolUse',
         updatedToolOutput: { ...r, file: { ...file, content: out, numLines: out.split('\n').length } },
@@ -205,29 +212,33 @@ process.stdin.on('end', () => {
         denyRe = undefined;
       }
       const { processMcpResult } = require('./lib/mcp-result');
-      const { out: mcpOut, applied, observed } = processMcpResult(r, {
+      const { out: mcpOut, applied, observed: blocks, totals, meta: mcpMeta } = processMcpResult(r, {
         toolName: evt.tool_name,
         mode: mcpMode,
         allowRe,
         denyRe,
         compressOpts: { ...opts, hostMayTruncate: false },
       });
+      const mcp = {
+        mode: mcpMode,
+        blocks: blocks.length,
+        wouldInBytes: blocks.reduce((s, b) => s + (b.inBytes || 0), 0),
+        wouldOutBytes: blocks.reduce((s, b) => s + (b.outBytes || 0), 0),
+        lossy: blocks.some((b) => b.lossy),
+        strategies: [...new Set(blocks.map((b) => b.strategy).filter(Boolean))],
+      };
       // Observe mode is only worth anything if the counterfactual is recorded.
-      // Aggregate into the nested `mcp` block: `stats`/`meta` stay null so
-      // these bytes never join the report's headline savings totals.
-      maybeLog('claude-mcp', null, null, {
+      // Only a transform the final aggregate gate actually let through joins
+      // the headline totals; a never-applied trim must not inflate savings.
+      if (!applied) {
+        maybeLog('claude-mcp', null, null, { command: evt.tool_name, applied: false, mcp });
+        return process.exit(0);
+      }
+      maybeLog('claude-mcp', { inBytes: totals.inBytes, outBytes: totals.outBytes }, mcpMeta, {
         command: evt.tool_name,
-        applied,
-        mcp: {
-          mode: mcpMode,
-          blocks: observed.length,
-          wouldInBytes: observed.reduce((s, b) => s + (b.inBytes || 0), 0),
-          wouldOutBytes: observed.reduce((s, b) => s + (b.outBytes || 0), 0),
-          lossy: observed.some((b) => b.lossy),
-          strategies: [...new Set(observed.map((b) => b.strategy).filter(Boolean))],
-        },
+        mcp,
+        emitted: { inLines: totals.inLines, outLines: totals.outLines, inTokEst: totals.inTokEst, outTokEst: totals.outTokEst },
       });
-      if (!applied) return process.exit(0);
       process.stdout.write(
         JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: mcpOut } })
       );
@@ -237,20 +248,28 @@ process.stdin.on('end', () => {
     let updated;
     let inBytes = 0;
     let outBytes = 0;
+    let inLines = 0;
+    let outLines = 0;
+    let inTokEst = 0;
+    let outTokEst = 0;
     let bestMeta = null; // contract of the dominant field, for telemetry
     let started = process.hrtime.bigint();
     let allRaw = '';
-    let allOut = '';
     if (r && typeof r === 'object' && (r.stdout !== undefined || r.stderr !== undefined || r.output !== undefined)) {
       const next = { ...r };
       let changed = false;
       for (const field of ['stdout', 'stderr', 'output']) {
         if (typeof next[field] !== 'string' || !next[field]) continue;
-        allRaw += next[field] + '\n';
+        if (observed) allRaw += next[field] + '\n';
         inBytes += Buffer.byteLength(next[field]);
         const { out, meta } = compress(next[field], { ...opts, hostComplete: claudeHostComplete(next[field], false) });
         outBytes += Buffer.byteLength(out);
-        allOut += out + '\n';
+        if (meta) {
+          inLines += meta.inputLines;
+          outLines += meta.outputLines;
+          inTokEst += meta.inputTokenEstimate;
+          outTokEst += meta.outputTokenEstimate;
+        }
         if (!bestMeta || (meta && meta.inputBytes > bestMeta.inputBytes)) bestMeta = meta;
         if (out !== next[field]) {
           next[field] = out;
@@ -265,37 +284,54 @@ process.stdin.on('end', () => {
       allRaw = original;
       const { out, meta } = compress(original, { ...opts, hostComplete: claudeHostComplete(original, false) });
       outBytes = Buffer.byteLength(out);
-      allOut = out;
       bestMeta = meta;
+      if (meta) {
+        inLines = meta.inputLines;
+        outLines = meta.outputLines;
+        inTokEst = meta.inputTokenEstimate;
+        outTokEst = meta.outputTokenEstimate;
+      }
       if (out !== original) updated = out;
     }
 
-    const duplicate = detectDuplicate(evt.session_id, allRaw);
+    const duplicate = observed ? detectDuplicate(evt.session_id, allRaw) : { duplicate: false, ageMs: null };
     // T7 observe-only: never affects the trim decision above, only metrics.
     let recovery;
-    try {
-      recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
-        commandFingerprint: commandFingerprint(opts.command),
-        lossy: !!(bestMeta && bestMeta.lossy),
-        sidecar: !!(bestMeta && bestMeta.sidecarPath),
-        markerKind: bestMeta && bestMeta.strategy,
-        bypass: false,
-        ts: Date.now(),
-      });
-    } catch {
-      recovery = undefined;
+    if (observed) {
+      try {
+        recovery = observeRecovery(evt.session_id, pressureState.compactionEpoch || 0, {
+          commandFingerprint: commandFingerprint(opts.command),
+          lossy: !!(bestMeta && bestMeta.lossy),
+          sidecar: !!(bestMeta && bestMeta.sidecarPath),
+          markerKind: bestMeta && bestMeta.strategy,
+          bypass: false,
+          ts: Date.now(),
+        });
+      } catch {
+        recovery = undefined;
+      }
     }
+    // The final gate runs over the whole model-visible result, after every
+    // field has been compressed: nothing is rewritten unless the aggregate
+    // wins, and the log records the bytes that are actually emitted.
+    const win = updated !== undefined && netWinTotals(inBytes, outBytes, inTokEst, outTokEst);
     const logExtra = {
       command: opts.command,
       durMs: Number(process.hrtime.bigint() - started) / 1e6,
       dupExact: duplicate.duplicate,
       dupAgeMs: duplicate.ageMs,
       recovery,
+      emitted: {
+        inLines,
+        outLines: win ? outLines : inLines,
+        inTokEst,
+        outTokEst: win ? outTokEst : inTokEst,
+      },
     };
-    // Only rewrite when it actually saves space; small outputs pass through,
-    // but metrics still record duplicate incidence and the attempted result.
-    if (updated === undefined || !netWin(allRaw, allOut)) {
-      maybeLog('claude', { inBytes, outBytes: outBytes || inBytes }, bestMeta, { ...logExtra, applied: false });
+    // Only rewrite when the aggregate actually saves space; small outputs pass
+    // through, but duplicate incidence is still recorded.
+    if (!win) {
+      maybeLog('claude', { inBytes, outBytes: inBytes }, bestMeta, { ...logExtra, applied: false });
       return process.exit(0);
     }
     maybeLog('claude', { inBytes, outBytes }, bestMeta, {

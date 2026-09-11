@@ -75,5 +75,27 @@ assert.strictEqual(accumulated.exceeded, true, 'two messages in one persisted tu
   fs.rmSync(metrics, { force: true });
 }
 
+// Aggregate metrics record the bytes that were actually emitted, not the sum of
+// per-part attempts.
+{
+  const metrics = path.join(require('os').tmpdir(), `trim-pi-aggregate-${process.pid}.jsonl`);
+  process.env.TRIM_METRICS = metrics;
+  const partA = 'installed package ok\n'.repeat(400);
+  const partB = `${'x'.repeat(100)}\x1b[31mred\x1b[0m`;
+  const multi = runtime.handleToolResult(
+    { ...event, toolCallId: 'multi', content: [{ type: 'text', text: partA }, { type: 'text', text: partB }] },
+    {},
+    { sessionId: sid, TRIM_OFF: '0' }
+  );
+  assert.ok(multi.patch, 'multi-part result wins as a whole');
+  const emitted = multi.patch.content.reduce((n, p) => n + Buffer.byteLength(p.text), 0);
+  runtime.logMetrics(multi.metrics);
+  delete process.env.TRIM_METRICS;
+  const record = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
+  assert.strictEqual(record.inBytes, Buffer.byteLength(partA) + Buffer.byteLength(partB));
+  assert.strictEqual(record.outBytes, emitted, 'recorded output bytes equal the emitted result');
+  fs.rmSync(metrics, { force: true });
+}
+
 delete process.env.TRIM_SIDECAR;
 console.log('pi-runtime.test.js: all assertions passed');

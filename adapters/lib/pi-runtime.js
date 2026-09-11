@@ -10,7 +10,8 @@ const {
   isSidecarPath,
   pressureScale,
   cheapHash,
-  netWin,
+  netWinTotals,
+  telemetryEnabled,
 } = require('../../bin/trim-core');
 const { detectDuplicate, clearDuplicates } = require('../../bin/lib/dup-detect');
 const { readState: readGenericState, writeState: writeGenericState, statePath } = require('../../bin/lib/session-state');
@@ -121,6 +122,10 @@ function handleToolResult(event, priorState, env = {}) {
   let bestMeta = null;
   let inBytes = 0;
   let outBytes = 0;
+  let inLines = 0;
+  let outLines = 0;
+  let inTokEst = 0;
+  let outTokEst = 0;
   for (const part of event.content) {
     if (!part || part.type !== 'text' || typeof part.text !== 'string') {
       mapped.push(part);
@@ -129,14 +134,20 @@ function handleToolResult(event, priorState, env = {}) {
     const result = compress(part.text, options);
     inBytes += Buffer.byteLength(part.text);
     outBytes += Buffer.byteLength(result.out);
+    if (result.meta) {
+      inLines += result.meta.inputLines;
+      outLines += result.meta.outputLines;
+      inTokEst += result.meta.inputTokenEstimate;
+      outTokEst += result.meta.outputTokenEstimate;
+    }
     if (!bestMeta || (result.meta && result.meta.inputBytes > bestMeta.inputBytes)) bestMeta = result.meta;
-    if (netWin(part.text, result.out)) {
-      mapped.push({ ...part, text: result.out });
-      changed = true;
-    } else mapped.push(part);
+    if (result.out !== part.text) changed = true;
+    mapped.push({ ...part, text: result.out });
   }
+  const win = changed && netWinTotals(inBytes, outBytes, inTokEst, outTokEst);
   const durMs = Number(process.hrtime.bigint() - started) / 1e6;
-  const duplicate = detectDuplicate(env.sessionId, raw);
+  const observed = telemetryEnabled();
+  const duplicate = observed ? detectDuplicate(env.sessionId, raw) : { duplicate: false, ageMs: null };
   const stateDelta = {
     ...state,
     handled: boundedHandled(state.handled, event.toolCallId, hash),
@@ -146,10 +157,10 @@ function handleToolResult(event, priorState, env = {}) {
     turnCounter: state.turnCounter + 1,
   };
   return {
-    patch: changed ? { content: mapped, details: event.details, isError: event.isError } : null,
+    patch: win ? { content: mapped, details: event.details, isError: event.isError } : null,
     stateDelta,
     metrics: {
-      stats: bestMeta ? { inBytes, outBytes } : null,
+      stats: bestMeta ? { inBytes, outBytes: win ? outBytes : inBytes } : null,
       meta: bestMeta,
       command: command || filePath,
       durMs,
@@ -157,7 +168,13 @@ function handleToolResult(event, priorState, env = {}) {
       profile: options.profile || null,
       dupExact: duplicate.duplicate,
       dupAgeMs: duplicate.ageMs,
-      applied: changed ? undefined : false,
+      applied: win ? undefined : false,
+      emitted: {
+        inLines,
+        outLines: win ? outLines : inLines,
+        inTokEst,
+        outTokEst: win ? outTokEst : inTokEst,
+      },
     },
   };
 }
