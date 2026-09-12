@@ -49,10 +49,9 @@ runMerge();
     post.some((h) => JSON.stringify(h).includes('/opt/other/adapters/thing.js')),
     'foreign hook still present'
   );
-  assert.ok(
-    post.some((h) => JSON.stringify(h).includes(`${REPO}/adapters/claude-posttooluse.js`)),
-    "trim's hook also present"
-  );
+  const trim = post.find((h) => JSON.stringify(h).includes(`${REPO}/adapters/claude-posttooluse.js`));
+  assert.ok(trim, "trim's hook also present");
+  assert.strictEqual(trim.matcher, '^(Bash|Read)$', 'installed hook has the narrow matcher');
 }
 
 // running twice: trim's entry appears exactly once (idempotency preserved)
@@ -93,7 +92,7 @@ runMerge();
   );
 }
 
-// legacy trim entry under the real ROOT with an old filename -> replaced in place, not duplicated
+// matcher-less 095475c trim entry under the real ROOT -> replaced in place, not duplicated
 {
   const legacyFile = path.join(HOME, '.claude', 'settings.json');
   const cfg = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
@@ -101,8 +100,7 @@ runMerge();
     (h) => !JSON.stringify(h).includes('claude-posttooluse.js')
   );
   cfg.hooks.PostToolUse.push({
-    matcher: '^(Bash|Read)$',
-    hooks: [{ type: 'command', command: `node ${REPO}/adapters/claude-posttooluse-old.js`, timeout: 10000 }],
+    hooks: [{ type: 'command', command: `node ${REPO}/adapters/claude-posttooluse.js`, timeout: 10000 }],
   });
   fs.writeFileSync(legacyFile, JSON.stringify(cfg, null, 2) + '\n');
   runMerge();
@@ -110,10 +108,9 @@ runMerge();
   const post = after.hooks.PostToolUse;
   const trimEntries = post.filter((h) => mineEntry(h));
   assert.strictEqual(trimEntries.length, 1, 'legacy entry replaced in place, not duplicated');
-  assert.ok(
-    post.some((h) => JSON.stringify(h).includes('claude-posttooluse.js') && !JSON.stringify(h).includes('-old.js')),
-    'legacy filename replaced by current one'
-  );
+  const current = post.find((h) => JSON.stringify(h).includes('claude-posttooluse.js'));
+  assert.ok(current, 'existing entry replaced by current one');
+  assert.strictEqual(current.matcher, '^(Bash|Read)$', 'matcher-less 095475c configuration upgrades in place');
 }
 
 function mineEntry(h) {

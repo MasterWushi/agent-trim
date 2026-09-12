@@ -73,7 +73,18 @@ contract. Official Claude Code hook docs allow PreCompact to block only; they
 do not expose `additionalContext` or a custom-instruction replacement field.
 `claude-precompact.js` exports the shared deterministic instruction for future
 host support but is intentionally not installed as a dead hook. PostCompact
-still resets pressure, narration provenance, duplicate state, and epoch.
+still resets pressure, provenance-note, duplicate state, and epoch.
+
+**Claude narration meter** — removed. An 8,266-call replay across 156 real
+Claude sessions projected only 185 firings (2.24 per 100 calls; 103 sessions
+never fired), while the matcher-less hook imposed Node startup on unrelated
+tools. Local adapter timings showed that disabling its logic did not remove
+that common-path cost, and a small live A/B/C found no demonstrated incremental
+benefit beyond `TERSE.md`. `TERSE.md` remains the lightweight narration-control
+mechanism. Do not re-add an always-on narration observer without new
+task-level evidence of improved success, reruns, cost, or trajectory; the
+recorded evidence is the 8,266-call replay, local adapter timings, and the
+small live A/B/C.
 
 **Content hashes use SHA-256; filenames stay FNV-1a** — deliberate protocol
 split. SHA-256 makes sidecar provenance and duplicate detection collision-

@@ -87,21 +87,8 @@ const bigOut = Array.from({ length: 900 }, (_, i) => `installed package-${i} ok`
   assert.ok(typeof rec.durMs === 'number');
   fs.rmSync(metrics, { force: true });
 }
-// MCP results are only compressible for a user who has broadened TRIM_TOOLS;
-// the default gate (^(Bash|Read)$) keeps this whole path dormant.
-const MCP_TOOLS = '^(Bash|Read|mcp__.*)$';
-{
-  const metrics = path.join(os.tmpdir(), `trim-mcp-default-${process.pid}.jsonl`);
-  const evt = {
-    tool_name: 'mcp__demo__query',
-    tool_input: {},
-    tool_response: { content: [{ type: 'text', text: bigOut }] },
-    session_id: 'mcp-default',
-  };
-  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_METRICS: metrics });
-  assert.strictEqual(r.stdout, '');
-  assert.ok(!fs.existsSync(metrics), 'default TRIM_TOOLS never touches mcp results');
-}
+// MCP handling remains conservative when a user deliberately widens the
+// installed matcher; default installation never invokes the adapter for MCP.
 // T8 observe mode records the counterfactual WITHOUT inflating reported savings
 {
   const metrics = path.join(os.tmpdir(), `trim-mcp-metrics-${process.pid}.jsonl`);
@@ -112,7 +99,7 @@ const MCP_TOOLS = '^(Bash|Read|mcp__.*)$';
     tool_response: { content: [{ type: 'text', text: huge }] },
     session_id: 'mcp-observe',
   };
-  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_TOOLS: MCP_TOOLS });
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_METRICS: metrics });
   assert.strictEqual(r.status, 0);
   assert.strictEqual(r.stdout, '', 'observe mode returns no replacement');
   const rec = JSON.parse(fs.readFileSync(metrics, 'utf8').trim());
@@ -140,7 +127,7 @@ const MCP_TOOLS = '^(Bash|Read|mcp__.*)$';
     tool_response: { content: [{ type: 'text', text: bigOut }] },
     session_id: 'mcp-off',
   };
-  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_METRICS: metrics, TRIM_MCP: 'off', TRIM_TOOLS: MCP_TOOLS });
+  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_METRICS: metrics, TRIM_MCP: 'off' });
   assert.strictEqual(r.stdout, '');
   assert.ok(!fs.existsSync(metrics), 'TRIM_MCP=off writes nothing');
   fs.rmSync(metrics, { force: true });
@@ -182,7 +169,7 @@ const MCP_TOOLS = '^(Bash|Read|mcp__.*)$';
     session_id: 'mcp-applied',
   };
   const r = run('claude-posttooluse.js', JSON.stringify(evt), {
-    TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_MCP: 'on', TRIM_MCP_ALLOW_RE: '^mcp__demo__', TRIM_TOOLS: MCP_TOOLS,
+    TRIM_NOTE: 'off', TRIM_METRICS: metrics, TRIM_MCP: 'on', TRIM_MCP_ALLOW_RE: '^mcp__demo__',
   });
   assert.strictEqual(r.status, 0);
   const u = JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput;
@@ -357,133 +344,26 @@ const MCP_TOOLS = '^(Bash|Read|mcp__.*)$';
   fs.rmSync(metrics, { force: true });
 }
 
-// ---- merged PostToolUse: compression + narration meter in one process ----
-function transcript(name, narrationWords) {
-  const file = path.join(os.tmpdir(), `trim-test-transcript-${process.pid}-${name}.jsonl`);
-  const entries = [{ type: 'user', uuid: `u-${name}`, message: { content: 'prompt' } }];
-  if (narrationWords > 0) {
-    entries.push({ type: 'assistant', message: { content: [{ type: 'text', text: 'word '.repeat(narrationWords).trim() }] } });
-  }
-  fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
-  return file;
-}
+// ---- Claude PostToolUse provenance note ----
 function cleanSession(id) {
-  fs.rmSync(path.join(os.tmpdir(), `trim-meter-${id}.json`), { force: true });
   fs.rmSync(path.join(os.tmpdir(), `trim-note-${id}`), { force: true });
 }
 function hookOut(r) {
   assert.strictEqual(r.status, 0);
   return JSON.parse(r.stdout).hookSpecificOutput;
 }
-
-// no transcript → no narration output
 {
-  const r = run('claude-posttooluse.js', JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Edit', transcript_path: '/nonexistent/x.jsonl' }));
-  assert.strictEqual(r.status, 0);
-  assert.strictEqual(r.stdout, '', 'neither feature fires');
-}
-// under-budget turn + nothing to compress → silent
-{
-  const tmp = transcript('quiet', 2);
-  const r = run('claude-posttooluse.js', JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Edit', transcript_path: tmp, session_id: 'meter-quiet' }));
-  assert.strictEqual(r.stdout, '', 'quiet under budget');
-  fs.unlinkSync(tmp);
-  cleanSession('meter-quiet');
-}
-// narration only: an over-budget turn on a tool trim never compresses
-{
-  const tmp = transcript('loud', 200);
-  const id = 'meter-loud';
-  const r = run('claude-posttooluse.js', JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Edit', transcript_path: tmp, session_id: id, tool_response: { stdout: bigOut } }));
-  const out = hookOut(r);
-  assert.ok(out.additionalContext.includes('words of narration'), 'narration correction emitted');
-  assert.strictEqual(out.updatedToolOutput, undefined, 'ineligible tool is never compressed');
-  fs.unlinkSync(tmp);
+  const id = 'provenance-note';
   cleanSession(id);
-}
-// compression only: eligible tool, quiet turn
-{
-  const tmp = transcript('compress-only', 2);
-  const id = 'merged-compress';
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: id };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off' }));
+  const evt = { tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, session_id: id };
+  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt)));
   assert.ok(out.updatedToolOutput.stdout.includes('[trim hook:'), 'compressed');
-  assert.strictEqual(out.additionalContext, undefined, 'no context when nothing wants it');
-  fs.unlinkSync(tmp);
-  cleanSession(id);
-}
-// compression + narration in the same event → one response carrying both
-{
-  const tmp = transcript('both', 200);
-  const id = 'merged-both';
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: id };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off' }));
-  assert.ok(out.updatedToolOutput.stdout.includes('[trim hook:'), 'still compressed');
-  assert.ok(out.additionalContext.includes('words of narration'), 'still corrected');
-  fs.unlinkSync(tmp);
-  cleanSession(id);
-}
-// provenance note + narration → note first, both present, once per session
-{
-  const tmp = transcript('note', 200);
-  const id = 'merged-note';
-  cleanSession(id);
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: id };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt)));
-  const noteAt = out.additionalContext.indexOf("trim's compression hook is active");
-  const meterAt = out.additionalContext.indexOf('words of narration');
-  assert.ok(noteAt === 0 && meterAt > noteAt, 'note precedes the narration correction');
-  // second event in the same session: note claimed already, meter re-armed by growth
-  fs.appendFileSync(tmp, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'word '.repeat(60).trim() }] } }) + '\n');
+  assert.ok(out.additionalContext.includes("trim's compression hook is active"), 'provenance note emitted');
   const again = hookOut(run('claude-posttooluse.js', JSON.stringify(evt)));
-  assert.ok(!again.additionalContext.includes("trim's compression hook is active"), 'note is once per session');
-  assert.ok(again.additionalContext.includes('words of narration'), 'meter re-arms on growth');
-  fs.unlinkSync(tmp);
+  assert.strictEqual(again.additionalContext, undefined, 'note is once per session');
   cleanSession(id);
 }
-// TRIM_NARRATION=off leaves compression alone and emits no correction
 {
-  const tmp = transcript('narr-off', 200);
-  const id = 'merged-narr-off';
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: id };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off', TRIM_NARRATION: 'off' }));
-  assert.ok(out.updatedToolOutput.stdout.includes('[trim hook:'), 'compression unaffected');
-  assert.strictEqual(out.additionalContext, undefined, 'meter disabled');
-  fs.unlinkSync(tmp);
-  cleanSession(id);
-}
-// malformed stdin with narration pending → still fails open, no output
-{
-  const r = run('claude-posttooluse.js', '{not json');
-  assert.strictEqual(r.status, 0);
-  assert.strictEqual(r.stdout, '');
-}
-// TRIM_OFF=1 suppresses both features
-{
-  const tmp = transcript('off', 200);
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: 'merged-off' };
-  const r = run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_OFF: '1' });
-  assert.strictEqual(r.stdout, '');
-  fs.unlinkSync(tmp);
-  cleanSession('merged-off');
-}
-// the per-command TRIM_OFF=1 bypass skips compression but not the meter
-{
-  const tmp = transcript('bypass', 200);
-  const id = 'merged-bypass';
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'TRIM_OFF=1 npm install' }, tool_response: { stdout: bigOut }, transcript_path: tmp, session_id: id };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt)));
-  assert.strictEqual(out.updatedToolOutput, undefined, 'bypassed command left untouched');
-  assert.ok(out.additionalContext.includes('words of narration'), 'meter still runs');
-  fs.unlinkSync(tmp);
-  cleanSession(id);
-}
-// a broadened TRIM_TOOLS still gates compression per tool name
-{
-  const evt = { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { command: 'x' }, tool_response: { stdout: bigOut }, session_id: 'merged-tools' };
-  const out = hookOut(run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_TOOLS: '^(Bash|Read|Edit)$', TRIM_NOTE: 'off' }));
-  assert.ok(out.updatedToolOutput.stdout.includes('[trim hook:'), 'compressed once allowed');
-  cleanSession('merged-tools');
 }
 // postcompact: malformed stdin → silent, exit 0
 {
@@ -494,11 +374,16 @@ function hookOut(r) {
 // postcompact resets pressure and bumps epoch
 {
   const id = `postcompact-${process.pid}`;
+  const meter = path.join(os.tmpdir(), `trim-meter-${id}.json`);
+  fs.writeFileSync(meter, '{}');
   const r = run('claude-postcompact.js', JSON.stringify({ session_id: id }));
   assert.strictEqual(r.stdout, '');
   const state = readState('trim-pressure', id);
   assert.strictEqual(state.pressureBand, 'low');
   assert.strictEqual(state.compactionEpoch, 1);
+  assert.ok(fs.existsSync(meter), 'PostCompact no longer touches narration state');
+  fs.rmSync(meter, { force: true });
+  fs.rmSync(statePath('trim-pressure', id), { force: true });
 }
 // current Claude PreCompact contract has no instruction output channel
 {

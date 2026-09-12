@@ -1,10 +1,9 @@
 'use strict';
 
 // Shared transcript-tail helpers (Claude Code only). The PostToolUse adapter
-// needs the current turn's real human prompt (enumeration carve-out +
-// relevance preservation) and the narration meter needs the turn's assistant
-// text blocks; both run in one process off ONE tail read, and the
-// turn-boundary schema lives here so the origin.kind/isMeta rules can't drift.
+// needs the current turn's real human prompt for the enumeration carve-out
+// and relevance preservation. The turn-boundary schema lives here so the
+// origin.kind/isMeta rules cannot drift.
 // Ported from hush (github.com/V-Songbird/hush), MIT.
 
 const fs = require('fs');
@@ -75,8 +74,8 @@ function lastUserPromptTextFromLines(lines) {
   return '';
 }
 
-// One tail read per process, shared by prompt extraction and the narration
-// meter. null when there is no readable transcript (bare harness).
+// One tail read per process. null when there is no readable transcript (bare
+// harness).
 function tailReader(transcriptPath) {
   let lines;
   let done = false;

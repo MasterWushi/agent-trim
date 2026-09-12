@@ -21,11 +21,11 @@ const file =
 const wanted =
   which === 'claude'
     ? {
-        // One PostToolUse process for compression AND the narration meter, so
-        // no matcher: the adapter gates compression itself (TRIM_TOOLS) while
-        // the meter still sees every tool call.
+        // Compression only needs Bash and eligible Read results. Keeping the
+        // matcher here prevents a Node process from starting for other tools.
         PostToolUse: [
           {
+            matcher: '^(Bash|Read)$',
             hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-posttooluse.js`, timeout: 10000 }],
           },
         ],
@@ -51,7 +51,15 @@ const wanted =
 // matcher-based fallback below never matches one of our own retired entries.
 const obsolete = which === 'claude' ? ['claude-narration-meter.js'] : [];
 
-const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+let cfg = {};
+if (fs.existsSync(file)) {
+  try {
+    cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    console.error(`cannot merge hooks: ${file} is not valid JSON`);
+    process.exit(1);
+  }
+}
 cfg.hooks = cfg.hooks || {};
 for (const event of Object.keys(cfg.hooks)) {
   if (!Array.isArray(cfg.hooks[event])) continue;
@@ -72,8 +80,10 @@ for (const [event, entries] of Object.entries(wanted)) {
     // '/adapters/' must coexist, not be silently replaced.
     const mine = (h) => JSON.stringify(h).includes(ROOT + '/adapters/');
     const idx = list.findIndex((h) => JSON.stringify(h).includes(ROOT + '/adapters/' + name) || mine(h));
-    if (idx >= 0) list[idx] = entry;
-    else list.push(entry);
+    if (idx >= 0) {
+      list[idx] = entry;
+      cfg.hooks[event] = list.filter((h, i) => i === idx || !mine(h));
+    } else list.push(entry);
   }
 }
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');

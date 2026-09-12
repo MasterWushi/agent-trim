@@ -1,21 +1,12 @@
 #!/usr/bin/env node
 'use strict';
-// Claude Code's single PostToolUse hook. Two jobs, one process (a second
-// spawned hook cost ~60-105ms of pure Node startup for work measured in
-// single-digit milliseconds):
-//  1. compress Bash/Read tool output before it reaches the model, emitting
-//     updatedToolOutput. The tool_response shape is preserved: object
-//     responses get stdout/stderr/output compressed field-by-field instead of
-//     being flattened into one string.
-//  2. run the mid-turn narration meter (adapters/lib/narration.js), emitting
-//     additionalContext when the turn's narration budget is crossed.
+// Claude Code PostToolUse adapter: compresses Bash and Read results before
+// they reach the model, emitting updatedToolOutput. The installed hook matcher
+// owns that scope (`^(Bash|Read)$`); this adapter deliberately has no second
+// tool gate. Object responses keep stdout/stderr/output separate instead of
+// being flattened into one string.
 //
-// The hook is registered without a matcher so the meter still sees every tool
-// call; TOOL_RE is the compressor's own gate and keeps compression on exactly
-// the tools the old `^(Bash|Read)$` matcher allowed.
-//
-// One transcript tail-read per fire serves both jobs and drives three
-// carve-outs:
+// One transcript tail-read per fire drives three carve-outs:
 //  - enumeration ("list every warning") disables elision for the turn
 //  - prompt-named identifiers (`ioredis`, "W1042") always survive the cap
 //  - transcript size tightens the caps as the session grows (TRIM_ADAPTIVE=off)
@@ -43,27 +34,12 @@ const {
 } = require('../bin/trim-core.js');
 const { observe: observeRecovery } = require('../bin/lib/recovery-detect');
 const { lastUserPromptTextFromLines, tailReader } = require('./lib/transcript');
-const { narrationCorrection } = require('./lib/narration');
 const { readState, writeState } = require('../bin/lib/session-state');
 const { detectDuplicate } = require('../bin/lib/dup-detect');
 
 const PRESSURE_KIND = 'trim-pressure';
 function claudeHostComplete(text, isRead) {
   return hostCompleteness(text, isRead);
-}
-
-// Tools whose output is compressed. Broadening this (e.g. to include mcp__*)
-// replaces what used to be done by widening the hook's matcher.
-const TOOL_RE = (() => {
-  try {
-    return new RegExp(process.env.TRIM_TOOLS || '^(Bash|Read)$');
-  } catch {
-    return /^(Bash|Read)$/;
-  }
-})();
-function compressibleTool(name) {
-  if (typeof name !== 'string' || !name) return true; // bare harness: no tool name to gate on
-  return TOOL_RE.test(name);
 }
 
 // Once per session, the first rewrite that leaves a visible [trim marker also
@@ -98,11 +74,9 @@ function claimSessionNote(sessionId) {
 }
 
 // Everything the compressor wants to emit: { updatedToolOutput?, note? }, or
-// undefined when it stays silent. Never exits — the narration meter, which
-// shares this process, still gets to run.
+// undefined when it stays silent.
 function compressionOutput(evt, tail) {
   try {
-    if (!compressibleTool(evt.tool_name)) return;
     const command = evt.tool_input && evt.tool_input.command;
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
     const promptText = lastUserPromptTextFromLines(tail() || []);
@@ -225,9 +199,10 @@ function compressionOutput(evt, tail) {
       };
     }
 
-    // T8 — MCP coverage, observe mode only. Never fires under the default
-    // TOOL_RE; only relevant if a user has broadened TRIM_TOOLS to include
-    // mcp__* tools. See adapters/lib/mcp-result.js.
+    // T8 — MCP coverage remains opt-in: the default installed matcher never
+    // invokes this adapter for MCP tools. Users who deliberately widen their
+    // Claude matcher retain the conservative observe/allowlist behavior here.
+    // See adapters/lib/mcp-result.js.
     if (typeof evt.tool_name === 'string' && /^mcp__/.test(evt.tool_name)) {
       const mcpMode = process.env.TRIM_MCP || 'observe';
       if (mcpMode === 'off') return;
@@ -380,17 +355,12 @@ function compressionOutput(evt, tail) {
   }
 }
 
-// Composition rule when more than one feature wants additionalContext: the
-// once-per-session provenance note comes first (it explains the markers the
-// same response may be introducing), the narration correction second. Both
-// are one paragraph; nothing is ever silently dropped.
-function respond(compressed, correction) {
+function respond(compressed) {
   const hookSpecificOutput = { hookEventName: 'PostToolUse' };
   if (compressed && compressed.updatedToolOutput !== undefined) {
     hookSpecificOutput.updatedToolOutput = compressed.updatedToolOutput;
   }
-  const context = [compressed && compressed.note, correction].filter(Boolean);
-  if (context.length) hookSpecificOutput.additionalContext = context.join('\n\n');
+  if (compressed && compressed.note) hookSpecificOutput.additionalContext = compressed.note;
   if (Object.keys(hookSpecificOutput).length === 1) return; // nothing to say
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
@@ -408,14 +378,7 @@ process.stdin.on('end', () => {
       return process.exit(0);
     }
     const tail = tailReader(evt.transcript_path);
-    const compressed = compressionOutput(evt, tail);
-    let correction;
-    try {
-      correction = narrationCorrection(evt, tail());
-    } catch {
-      correction = undefined;
-    }
-    respond(compressed, correction);
+    respond(compressionOutput(evt, tail));
   } catch {
     /* never block the tool on adapter failure */
   }
