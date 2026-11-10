@@ -246,14 +246,8 @@ function logNarration(step, profile) {
 }
 
 module.exports = {
-  KIND,
-  MAX_HANDLED,
-  PI_MAX_BYTES,
-  PI_MAX_LINES,
   PRESERVATION_INSTRUCTIONS,
   PROFILES,
-  cheapHash,
-  emptyState,
   readState,
   writeState,
   statePath: (sessionId) => statePath(KIND, sessionId),

@@ -91,4 +91,4 @@ function tailReader(transcriptPath) {
   };
 }
 
-module.exports = { readTailLines, isRealUserPrompt, userPromptText, lastUserPromptTextFromLines, tailReader, TAIL_BYTES };
+module.exports = { isRealUserPrompt, lastUserPromptTextFromLines, tailReader };

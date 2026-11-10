@@ -105,4 +105,4 @@ function processMcpResult(result, { toolName, mode, allowRe, denyRe, compressOpt
   }
 }
 
-module.exports = { processMcpResult, isRecognizedTextBlock, isPlainObject };
+module.exports = { processMcpResult };
