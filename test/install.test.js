@@ -110,5 +110,19 @@ uninstall();
   assert.ok(JSON.stringify(cfg).includes('claude-posttooluse.js'), 'fresh install writes hooks');
 }
 
+// ---- uninstall with a malformed settings file still removes everything else ----
+{
+  const home3 = path.join(sandbox, 'home3');
+  fs.mkdirSync(path.join(home3, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(home3, '.config', 'opencode'), { recursive: true });
+  execFileSync('bash', [path.join(WORK, 'install.sh')], { env: { ...process.env, HOME: home3 }, encoding: 'utf8' });
+  const bad = path.join(home3, '.claude', 'settings.json');
+  fs.writeFileSync(bad, '{not json');
+  execFileSync('bash', [path.join(WORK, 'uninstall.sh')], { env: { ...process.env, HOME: home3 }, encoding: 'utf8', stdio: 'pipe' });
+  assert.strictEqual(fs.readFileSync(bad, 'utf8'), '{not json', 'malformed file left untouched');
+  assert.ok(!fs.existsSync(path.join(home3, '.config', 'opencode', 'plugins', 'trim.ts')), 'plugin removed despite bad JSON');
+  assert.ok(!fs.readFileSync(path.join(home3, '.claude', 'CLAUDE.md'), 'utf8').includes('trim:style:start'), 'style removed despite bad JSON');
+}
+
 fs.rmSync(sandbox, { recursive: true, force: true });
 console.log('install.test.js: all assertions passed');

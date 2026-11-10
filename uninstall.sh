@@ -14,7 +14,14 @@ const fs = require('fs'), os = require('os');
 const ROOT = process.env.ROOT;
 for (const f of [os.homedir()+'/.claude/settings.json', os.homedir()+'/.codex/hooks.json']) {
   if (!fs.existsSync(f)) continue;
-  const cfg = JSON.parse(fs.readFileSync(f,'utf8'));
+  let cfg;
+  try {
+    cfg = JSON.parse(fs.readFileSync(f,'utf8'));
+  } catch {
+    // keep going: one bad file must not leave the plugins and style blocks installed
+    console.error('WARNING: '+f+' is not valid JSON; remove trim hooks from it by hand');
+    continue;
+  }
   if (cfg.hooks) {
     for (const ev of ['PostToolUse', 'SubagentStart', 'PostCompact']) {
       if (!cfg.hooks[ev]) continue;
