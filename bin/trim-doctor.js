@@ -18,6 +18,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { wantedHooks } = require('../adapters/merge-hooks');
 
 const ROOT = path.resolve(__dirname, '..');
 const HOME = process.env.TRIM_DOCTOR_HOME || os.homedir();
@@ -58,6 +59,33 @@ for (const w of WRAPPERS) {
 // --- 2. hook wiring: does the harness point at THIS repo? ---
 // A hook command naming a different checkout means an old clone is still live —
 // the failure mode a pull cannot fix and that silently halves your metrics.
+// Pointing at this repo is not enough: a pull can change the matcher, an
+// event, or a timeout, and only install.sh rewrites settings. Compare trim's
+// own entries with the list merge-hooks.js writes. Key order is ignored.
+function canonical(v) {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object') {
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+function hookDrift(which, cfg) {
+  const wanted = wantedHooks(which, ROOT);
+  const hooks = (cfg && cfg.hooks) || {};
+  const ours = (event) =>
+    (Array.isArray(hooks[event]) ? hooks[event] : []).filter((e) => JSON.stringify(e).includes(`${ROOT}/adapters/`));
+  const drift = [];
+  for (const event of new Set([...Object.keys(wanted), ...Object.keys(hooks)])) {
+    const have = ours(event);
+    const want = wanted[event] || [];
+    if (!have.length && !want.length) continue;
+    if (!want.length) drift.push(`${event} (retired trim hook)`);
+    else if (!have.length) drift.push(`${event} (missing)`);
+    else if (canonical(have) !== canonical(want)) drift.push(`${event} (outdated)`);
+  }
+  return drift;
+}
+
 const HOOKS = [
   { name: 'claude', file: '.claude/settings.json', hostDir: '.claude' },
   { name: 'codex', file: '.codex/hooks.json', hostDir: '.codex' },
@@ -69,17 +97,19 @@ for (const h of HOOKS) {
     add('stale', h.name, `${h.name} is installed but ${h.file} is missing — trim is not wired into it`, './install.sh');
     continue;
   }
-  let raw;
+  let raw, cfg;
   try {
     raw = fs.readFileSync(file, 'utf8');
-    JSON.parse(raw);
+    cfg = JSON.parse(raw);
   } catch {
     add('warn', h.name, `${h.file} is not valid JSON — cannot verify wiring`, 'inspect the file by hand');
     continue;
   }
   const mine = raw.includes(`${ROOT}/adapters/`);
   const foreign = /"command":\s*"[^"]*\/adapters\/(claude|codex)-[\w-]+\.js/.test(raw) && !mine;
-  if (mine && !foreign) add('ok', h.name, `${h.file} points at this repo`, null);
+  const drift = mine && !foreign ? hookDrift(h.name, cfg) : [];
+  if (drift.length) add('stale', h.name, `${h.file} trim hooks differ from what install.sh writes: ${drift.join(', ')}`, './install.sh');
+  else if (mine && !foreign) add('ok', h.name, `${h.file} points at this repo`, null);
   else if (foreign) add('stale', h.name, `${h.file} runs trim adapters from a DIFFERENT checkout, not ${ROOT}`, './install.sh');
   else add('stale', h.name, `${h.file} has no trim hooks`, './install.sh');
 }

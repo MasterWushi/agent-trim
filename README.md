@@ -115,13 +115,14 @@ clone** — `node /path/to/agent-trim/adapters/claude-posttooluse.js`. Your agen
 execute your working tree directly, so one `git pull` updates all four at once.
 There is no copy of the compressor anywhere else on disk to go stale.
 
-### The three things a pull cannot fix
+### The four things a pull cannot fix
 
 | Drift | Why | Fix |
 |---|---|---|
 | Rendered harness wrappers (`~/.config/opencode/plugins/trim.ts`, `~/.pi/agent/extensions/trim.ts`) | `install.sh` **copies** these, substituting the repo path. Both are kept thin — they `require` their behaviour from `adapters/lib/*-runtime.js` in the repo — so they only change when a host's own plugin API does. | `./install.sh` |
 | Style block in `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, … | `append_style` skips any file already carrying the `<!-- trim:style:start -->` marker, so edits to `style/TERSE.md` never reach an existing install. | delete the block, then `./install.sh` |
 | Hooks pointing at an **older clone** | Nothing you pull *in this directory* can change a hook that names a different path. | `./install.sh` |
+| Hook settings from an **older install** (matcher, events, timeouts) | `settings.json` / `hooks.json` hold a copy of the hook list in `adapters/merge-hooks.js`; only `install.sh` rewrites it. The doctor names each event that differs. | `./install.sh` |
 
 The doctor also flags a harness you installed *after* trim: `install.sh` only
 wires directories that exist when it runs, so a newly added agent sits unwired

@@ -10,6 +10,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const DOCTOR = path.join(ROOT, 'bin', 'trim-doctor.js');
+const { wantedHooks } = require('../adapters/merge-hooks');
 
 function fakeHome() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'trim-doctor-'));
@@ -86,18 +87,29 @@ const write = (p, s) => {
   assert.strictEqual(status, 1, 'foreign checkout is drift');
   assert.match(find(report, 'claude')[0].detail, /DIFFERENT checkout/);
 
-  // repointed at this repo -> ok
-  write(
-    settings,
-    JSON.stringify({
-      hooks: {
-        PostToolUse: [
-          { matcher: '^(Bash|Read)$', hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-posttooluse.js` }] },
-        ],
-      },
-    })
-  );
-  assert.strictEqual(find(run(home).report, 'claude')[0].level, 'ok', 'own repo -> ok');
+  // exactly what install.sh writes -> ok
+  const wanted = () => wantedHooks('claude', ROOT);
+  write(settings, JSON.stringify({ hooks: wanted() }));
+  assert.strictEqual(find(run(home).report, 'claude')[0].level, 'ok', 'own repo, current hooks -> ok');
+
+  // this repo, but drifted in ways a pull cannot repair -> stale, naming the event
+  const cases = [
+    ['matcher-less 095475c install runs trim on every tool', (h) => delete h.PostToolUse[0].matcher, /PostToolUse \(outdated\)/],
+    ['hook event never installed', (h) => delete h.SubagentStart, /SubagentStart \(missing\)/],
+    [
+      'retired adapter still wired',
+      (h) => (h.Stop = [{ hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-narration-meter.js` }] }]),
+      /Stop \(retired trim hook\)/,
+    ],
+  ];
+  for (const [label, mutate, detail] of cases) {
+    const hooks = wanted();
+    mutate(hooks);
+    write(settings, JSON.stringify({ hooks }));
+    const f = find(run(home).report, 'claude')[0];
+    assert.strictEqual(f.level, 'stale', label);
+    assert.match(f.detail, detail, label);
+  }
   fs.rmSync(home, { recursive: true, force: true });
 }
 
