@@ -38,9 +38,6 @@ const { readState, writeState } = require('../bin/lib/session-state');
 const { detectDuplicate } = require('../bin/lib/dup-detect');
 
 const PRESSURE_KIND = 'trim-pressure';
-function claudeHostComplete(text, isRead) {
-  return hostCompleteness(text, isRead);
-}
 
 // Once per session, the first rewrite that leaves a visible [trim marker also
 // attaches additionalContext — delivered by Claude Code as a genuine
@@ -270,7 +267,7 @@ function compressionOutput(evt, tail) {
         if (typeof next[field] !== 'string' || !next[field]) continue;
         if (observed) allRaw += next[field] + '\n';
         inBytes += Buffer.byteLength(next[field]);
-        const { out, meta } = compress(next[field], { ...opts, hostComplete: claudeHostComplete(next[field], false) });
+        const { out, meta } = compress(next[field], { ...opts, hostComplete: hostCompleteness(next[field]) });
         outBytes += Buffer.byteLength(out);
         if (meta) {
           inLines += meta.inputLines;
@@ -290,7 +287,7 @@ function compressionOutput(evt, tail) {
       if (original === undefined) return; // nothing we understand — leave untouched
       inBytes = Buffer.byteLength(original);
       allRaw = original;
-      const { out, meta } = compress(original, { ...opts, hostComplete: claudeHostComplete(original, false) });
+      const { out, meta } = compress(original, { ...opts, hostComplete: hostCompleteness(original) });
       outBytes = Buffer.byteLength(out);
       bestMeta = meta;
       if (meta) {

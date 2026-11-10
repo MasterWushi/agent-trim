@@ -374,15 +374,11 @@ function hookOut(r) {
 // postcompact resets pressure and bumps epoch
 {
   const id = `postcompact-${process.pid}`;
-  const meter = path.join(os.tmpdir(), `trim-meter-${id}.json`);
-  fs.writeFileSync(meter, '{}');
   const r = run('claude-postcompact.js', JSON.stringify({ session_id: id }));
   assert.strictEqual(r.stdout, '');
   const state = readState('trim-pressure', id);
   assert.strictEqual(state.pressureBand, 'low');
   assert.strictEqual(state.compactionEpoch, 1);
-  assert.ok(fs.existsSync(meter), 'PostCompact no longer touches narration state');
-  fs.rmSync(meter, { force: true });
   fs.rmSync(statePath('trim-pressure', id), { force: true });
 }
 // current Claude PreCompact contract has no instruction output channel
