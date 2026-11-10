@@ -6,7 +6,8 @@
 // tool gate. Object responses keep stdout/stderr/output separate instead of
 // being flattened into one string.
 //
-// One transcript tail-read per fire drives three carve-outs:
+// One transcript tail-read per compressed result (never for bypassed commands
+// or untouched source Reads) drives three carve-outs:
 //  - enumeration ("list every warning") disables elision for the turn
 //  - prompt-named identifiers (`ioredis`, "W1042") always survive the cap
 //  - transcript size tightens the caps as the session grows (TRIM_ADAPTIVE=off)
