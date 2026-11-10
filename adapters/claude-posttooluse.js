@@ -79,7 +79,6 @@ function compressionOutput(evt, tail) {
   try {
     const command = evt.tool_input && evt.tool_input.command;
     // user opted out for this one command via `TRIM_OFF=1 <cmd>` prefix
-    const promptText = lastUserPromptTextFromLines(tail() || []);
     const pressureState = readState(PRESSURE_KIND, evt.session_id);
     const observed = telemetryEnabled();
     if (String(command).includes('TRIM_OFF=1')) {
@@ -113,6 +112,21 @@ function compressionOutput(evt, tail) {
       writeState(PRESSURE_KIND, evt.session_id, { pressureBand, compactionEpoch: pressureState.compactionEpoch || 0 });
     }
     const r = evt.tool_response;
+    // Read results are compressed ONLY for log-shaped, machine-generated, or
+    // sidecar paths — source code passes untouched, so a capped Read can
+    // never cut lines the model might need to edit byte-exactly. Without
+    // this, a 60k-char `Read logs/app.log` or lockfile enters context whole
+    // and is re-sent on every later API call. Checked before the transcript
+    // tail is parsed, so a source Read pays nothing for the prompt.
+    let file, filePath, sideRead;
+    if (evt.tool_name === 'Read') {
+      file = r && typeof r === 'object' ? r.file : undefined;
+      filePath = (evt.tool_input && evt.tool_input.file_path) || (file && file.filePath);
+      if (!file || typeof file.content !== 'string') return;
+      sideRead = isSidecarPath(filePath);
+      if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return;
+    }
+    const promptText = lastUserPromptTextFromLines(tail() || []);
     // Claude Code's Bash tool_response carries no exit code ({stdout, stderr,
     // interrupted, isImage} per the hooks doc) — extractExitCode covers other
     // shapes, `interrupted` marks a killed/timed-out run as a failure, and
@@ -134,17 +148,7 @@ function compressionOutput(evt, tail) {
       hostMayTruncate: true,
     };
 
-    // Read results are compressed ONLY for log-shaped, machine-generated, or
-    // sidecar paths — source code passes untouched, so a capped Read can
-    // never cut lines the model might need to edit byte-exactly. Without
-    // this, a 60k-char `Read logs/app.log` or lockfile enters context whole
-    // and is re-sent on every later API call.
     if (evt.tool_name === 'Read') {
-      const file = r && typeof r === 'object' ? r.file : undefined;
-      const filePath = (evt.tool_input && evt.tool_input.file_path) || (file && file.filePath);
-      if (!file || typeof file.content !== 'string') return;
-      const sideRead = isSidecarPath(filePath);
-      if (!isLogPath(filePath) && !isGeneratedPath(filePath) && !sideRead) return;
       const readDup = observed ? detectDuplicate(evt.session_id, file.content) : { duplicate: false, ageMs: null };
       // T7 observe-only: never affects the trim decision above, only metrics.
       let recovery;
