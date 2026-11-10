@@ -463,12 +463,19 @@ function sha256(text) {
   return `sha256:${crypto.createHash('sha256').update(text).digest('hex')}`;
 }
 
+// Same input in the same session -> same file, so the digest and the write
+// always agree on the path.
+function sidecarName(cleaned, sessionId) {
+  const prefix = sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '';
+  return `${prefix}${cheapHash(cleaned)}.txt`;
+}
+
 function writeSidecarFile(cleaned, sessionId, census, opts) {
   if (process.env.TRIM_SIDECAR === 'off') return null;
   try {
     const fs = require('fs');
     const path = require('path');
-    const name = (sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '') + `${cheapHash(cleaned)}.txt`;
+    const name = sidecarName(cleaned, sessionId);
     const file = path.join(SIDECAR_DIR, name);
     fs.mkdirSync(SIDECAR_DIR, { recursive: true });
     sweepSidecars(fs, path, Date.now());
@@ -535,7 +542,7 @@ function maybeSidecar(cleaned, relevanceTokens, sessionId, hostMayTruncate, opts
   if (hostMayTruncate && o.hostComplete === undefined && cleaned.length >= SIDECAR_SHELL_MAX) return null;
   try {
     const path = require('path');
-    const name = (sessionId ? `${String(sessionId).replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 8)}-` : '') + `${cheapHash(cleaned)}.txt`;
+    const name = sidecarName(cleaned, sessionId);
     const file = path.join(SIDECAR_DIR, name);
     const d = buildSidecarDigest(cleaned, relevanceTokens);
     const header =
