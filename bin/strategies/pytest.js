@@ -3,6 +3,7 @@
 // verbose run; the FAILURES section, errors, warnings summary, and the final
 // counts line are the signal and pass through verbatim. Non-verbose runs
 // (dot progress) don't match and fall through — they're already dense.
+const { collapseLines } = require('../lib/collapse-lines');
 
 const SESSION = /^=+ test session starts =+$/m;
 const PASS_LINE = /^(\S+::\S.*?)\s+PASSED(\s+\[\s*\d+%\])?$/;
@@ -13,32 +14,20 @@ module.exports = {
   minBytes: 2000,
   apply(text) {
     if (!SESSION.test(text)) return null;
-    const lines = text.split('\n');
-    const out = [];
-    let removed = 0;
-    let markerAt = -1;
     let inFailures = false;
-    for (const line of lines) {
+    const isNoise = (line) => {
       // never touch anything from the FAILURES/ERRORS sections onward
       if (/^=+ (FAILURES|ERRORS|warnings summary|short test summary info) =*/.test(line)) inFailures = true;
-      if (!inFailures && PASS_LINE.test(line)) {
-        if (markerAt === -1) {
-          markerAt = out.length;
-          out.push('');
-        }
-        removed++;
-        continue;
-      }
-      out.push(line);
-    }
-    if (removed < MIN_REMOVED) return null;
-    out[markerAt] =
+      return !inFailures && PASS_LINE.test(line);
+    };
+    const c = collapseLines(text, isNoise, MIN_REMOVED, (removed) =>
       `[trim hook: ${removed} PASSED test lines collapsed; failures, errors, warnings, ` +
-      `and the summary are kept in full]`;
+      `and the summary are kept in full]`);
+    if (!c) return null;
     return {
-      out: out.join('\n'),
+      out: c.out,
       lossy: true, // passing test ids dropped (counts survive in the summary line)
-      omittedLines: removed,
+      omittedLines: c.removed,
       reason: 'pytest PASSED lines collapsed; failures kept verbatim',
     };
   },

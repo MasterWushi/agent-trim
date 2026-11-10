@@ -80,7 +80,7 @@ module.exports = {
       .sort((a, b) => b[1] - a[1])
       .map(([lvl, n]) => `${n} ${lvl}`)
       .join(', ');
-    const dropped = parsed + (nonEmpty.length - parsed) - keep.size;
+    const dropped = nonEmpty.length - keep.size;
     if (dropped < MIN_RECORDS) return null; // not enough to be worth a marker
 
     const keptSorted = [...keep].sort((a, b) => a - b);

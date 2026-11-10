@@ -4,6 +4,7 @@
 // and every FAIL block, panic, and log line inside failing tests passes
 // through verbatim (t.Log output of failing tests is indented under the
 // "--- FAIL:" line, which is never removed).
+const { collapseLines } = require('../lib/collapse-lines');
 
 const NOISE = /^\s*(=== (RUN|PAUSE|CONT)\s|--- PASS:)/;
 const GO_MARK = /^(=== RUN\s|--- (PASS|FAIL):|ok\s+\S+\s|FAIL\s+\S+\s)/m;
@@ -14,29 +15,14 @@ module.exports = {
   minBytes: 2000,
   apply(text) {
     if (!GO_MARK.test(text)) return null;
-    const lines = text.split('\n');
-    const out = [];
-    let removed = 0;
-    let markerAt = -1;
-    for (const line of lines) {
-      if (NOISE.test(line)) {
-        if (markerAt === -1) {
-          markerAt = out.length;
-          out.push('');
-        }
-        removed++;
-        continue;
-      }
-      out.push(line);
-    }
-    if (removed < MIN_REMOVED) return null;
-    out[markerAt] =
+    const c = collapseLines(text, (line) => NOISE.test(line), MIN_REMOVED, (removed) =>
       `[trim hook: ${removed} go test RUN/PASS progress lines collapsed; package results, ` +
-      `all failures, and panics are kept in full]`;
+      `all failures, and panics are kept in full]`);
+    if (!c) return null;
     return {
-      out: out.join('\n'),
+      out: c.out,
       lossy: true, // passing test names dropped (package "ok" lines survive)
-      omittedLines: removed,
+      omittedLines: c.removed,
       reason: 'go test progress lines collapsed; failures kept verbatim',
     };
   },
