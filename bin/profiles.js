@@ -16,9 +16,11 @@ function positiveInt(value) {
 
 function effectiveCaps(profileName, env = process.env) {
   const name = profileName || env.TRIM_PROFILE;
-  const profile = PROFILES[name] || DEFAULTS;
+  // Own keys only: `constructor` or `toString` must not resolve to a profile.
+  const known = typeof name === 'string' && Object.prototype.hasOwnProperty.call(PROFILES, name);
+  const profile = known ? PROFILES[name] : DEFAULTS;
   return {
-    profile: PROFILES[name] ? name : null,
+    profile: known ? name : null,
     pass: positiveInt(env.TRIM_CAP_PASS) || profile.pass,
     fail: positiveInt(env.TRIM_CAP_FAIL) || positiveInt(env.TRIM_MAX_LINES) || profile.fail,
     sidecarMin: positiveInt(env.TRIM_SIDECAR_MIN) || profile.sidecarMin,

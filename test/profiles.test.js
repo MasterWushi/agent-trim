@@ -8,6 +8,9 @@ assert.deepStrictEqual(effectiveCaps('autonomous-loop', {}), { profile: 'autonom
 assert.deepStrictEqual(effectiveCaps('eval', { TRIM_CAP_PASS: '77', TRIM_CAP_FAIL: '222', TRIM_SIDECAR_MIN: '9999' }), {
   profile: 'eval', pass: 77, fail: 222, sidecarMin: 9999,
 });
+for (const name of ['constructor', 'toString', '__proto__']) {
+  assert.deepStrictEqual(effectiveCaps(name, {}), effectiveCaps(null, {}), name);
+}
 assert.deepStrictEqual(pressureScale(430 * 1024, 'low'), { scale: 1, band: 'low' });
 assert.deepStrictEqual(pressureScale(460 * 1024, 'low'), { scale: 0.75, band: 'mid' });
 assert.deepStrictEqual(pressureScale(390 * 1024, 'mid'), { scale: 0.75, band: 'mid' });
