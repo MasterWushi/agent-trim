@@ -34,7 +34,9 @@ append_style() { # $1 = instructions file
 }
 
 render() { # $1 template, $2 dest — substitute repo root path
-  sed "s|__TRIM_ROOT__|$ROOT|g" "$1" > "$2"
+  # escape the characters sed treats specially in a replacement: \ & and the | delimiter
+  local r="${ROOT//\\/\\\\}"; r="${r//&/\\&}"; r="${r//|/\\|}"
+  sed "s|__TRIM_ROOT__|$r|g" "$1" > "$2"
 }
 
 echo "trim root: $ROOT"

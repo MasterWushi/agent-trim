@@ -4,6 +4,39 @@
 // hooks.json. Invoked by install.sh with ROOT env set.
 const fs = require('fs');
 const os = require('os');
+
+// Hook commands run through a shell. Quote the script path only when it needs
+// it, so an ordinary install keeps the exact command string it always had.
+function shellPath(p) {
+  return /^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`;
+}
+const node = (root, script) => `node ${shellPath(`${root}/adapters/${script}`)}`;
+
+// Per event: the entries trim owns. Idempotency key is the adapter filename —
+// any existing entry mentioning it gets replaced in place. trim-doctor compares
+// installed settings against this same list.
+function wantedHooks(which, root) {
+  return which === 'claude'
+    ? {
+        // Compression only needs Bash and eligible Read results. Keeping the
+        // matcher here prevents a Node process from starting for other tools.
+        PostToolUse: [
+          {
+            matcher: '^(Bash|Read)$',
+            hooks: [{ type: 'command', command: node(root, 'claude-posttooluse.js'), timeout: 10000 }],
+          },
+        ],
+        SubagentStart: [{ hooks: [{ type: 'command', command: node(root, 'claude-subagent-brief.js'), timeout: 5000 }] }],
+        PostCompact: [{ hooks: [{ type: 'command', command: node(root, 'claude-postcompact.js'), timeout: 5000 }] }],
+      }
+    : {
+        PostToolUse: [{ hooks: [{ type: 'command', command: node(root, 'codex-posttooluse.js'), timeout: 10 }] }],
+      };
+}
+
+module.exports = { wantedHooks, shellPath };
+if (require.main !== module) return;
+
 const ROOT = process.env.ROOT;
 const which = process.argv[2];
 if (!ROOT || !['claude', 'codex'].includes(which)) {
@@ -15,36 +48,7 @@ const file =
   which === 'claude'
     ? os.homedir() + '/.claude/settings.json'
     : os.homedir() + '/.codex/hooks.json';
-
-// Per event: the entries trim owns. Idempotency key is the adapter filename —
-// any existing entry mentioning it gets replaced in place.
-const wanted =
-  which === 'claude'
-    ? {
-        // Compression only needs Bash and eligible Read results. Keeping the
-        // matcher here prevents a Node process from starting for other tools.
-        PostToolUse: [
-          {
-            matcher: '^(Bash|Read)$',
-            hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-posttooluse.js`, timeout: 10000 }],
-          },
-        ],
-        SubagentStart: [
-          {
-            hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-subagent-brief.js`, timeout: 5000 }],
-          },
-        ],
-        PostCompact: [
-          {
-            hooks: [{ type: 'command', command: `node ${ROOT}/adapters/claude-postcompact.js`, timeout: 5000 }],
-          },
-        ],
-      }
-    : {
-        PostToolUse: [
-          { hooks: [{ type: 'command', command: `node ${ROOT}/adapters/codex-posttooluse.js`, timeout: 10 }] },
-        ],
-      };
+const wanted = wantedHooks(which, ROOT);
 
 // Trim adapters that used to be installed and no longer are. Removed before
 // merging so an upgrade can't leave a stale trim process behind, and so the

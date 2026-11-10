@@ -113,6 +113,26 @@ runMerge();
   assert.strictEqual(current.matcher, '^(Bash|Read)$', 'matcher-less 095475c configuration upgrades in place');
 }
 
+// A repo path with a space: hook commands must still run through the shell,
+// and a second merge must replace the quoted entries, not duplicate them.
+{
+  const spaced = path.join(sandbox, 'my trim');
+  fs.symlinkSync(REPO, spaced);
+  const merge = () =>
+    execFileSync('node', [path.join(REPO, 'adapters', 'merge-hooks.js'), 'claude'], {
+      env: { ...process.env, HOME, ROOT: spaced },
+      encoding: 'utf8',
+    });
+  merge();
+  merge();
+  const cfg = settings();
+  const own = cfg.hooks.PostCompact.filter((h) => JSON.stringify(h).includes(`${spaced}/adapters/`));
+  assert.strictEqual(own.length, 1, 'quoted entry replaced in place, not duplicated');
+  const cmd = own[0].hooks[0].command;
+  assert.strictEqual(cmd, `node '${spaced}/adapters/claude-postcompact.js'`, 'space in ROOT is shell-quoted');
+  execFileSync('sh', ['-c', cmd], { input: '{}', env: { ...process.env, HOME } }); // throws on non-zero exit
+}
+
 function mineEntry(h) {
   return JSON.stringify(h).includes(`${REPO}/adapters/`);
 }
