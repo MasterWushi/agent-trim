@@ -86,19 +86,29 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function protectedTrailer(text) {
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (!lines[i].trim()) continue;
-    return KEEP_LAST_RE.test(lines[i]) ? lines[i] : null;
+// Last non-blank line and its start offset, scanned from the end so a large
+// input is never split just to look at its tail.
+function lastNonBlankLine(text) {
+  let end = text.length;
+  while (end > 0) {
+    const start = text.lastIndexOf('\n', end - 1) + 1;
+    const line = text.slice(start, end);
+    if (line.trim()) return { line, start };
+    end = start - 1;
   }
   return null;
+}
+
+function protectedTrailer(text) {
+  const last = lastNonBlankLine(text);
+  return last && KEEP_LAST_RE.test(last.line) ? last.line : null;
 }
 
 // Progress bars redraw via a bare \r; only the final state of each physical
 // line matters. \r\n is an ordinary Windows line ending, not a redraw —
 // normalize it first or every CRLF line collapses to empty.
 function resolveCarriageReturns(text) {
+  if (!text.includes('\r')) return text;
   return text
     .replace(/\r\n/g, '\n')
     .split('\n')
@@ -800,10 +810,7 @@ function netWin(inText, outText, meta) {
 // with the trailer re-emitted last.
 function condensedEnvelope(text) {
   if (!protectedTrailer(text)) return false;
-  const lines = text.split('\n');
-  let i = lines.length - 1;
-  while (i >= 0 && !lines[i].trim()) i--; // the trailer line protectedTrailer found
-  const body = lines.slice(0, i).join('\n').trim();
+  const body = text.slice(0, lastNonBlankLine(text).start).trim();
   if (!body) return true; // trailer alone: nothing to compress
   return /^[[{]/.test(body); // JSON envelope — capping it breaks parseability
 }
@@ -841,7 +848,7 @@ function compress(text, opts) {
   const inBytes = Buffer.byteLength(text);
 
   // 1. ANSI / OSC escape sequences
-  let s = text.replace(ANSI_RE, '');
+  let s = text.includes('\x1b') ? text.replace(ANSI_RE, '') : text;
   // 2. carriage-return progress lines: keep only final repaint per line
   s = resolveCarriageReturns(s);
   // 3. trailing whitespace + other control chars (keep \t)
