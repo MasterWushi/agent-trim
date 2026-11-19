@@ -61,4 +61,5 @@ function run(args, file) {
   assert.ok(/no data/i.test(out), 'empty file produces a clean no-data message');
 }
 
+fs.rmSync(tmp, { recursive: true, force: true });
 console.log('stats.test.js: all assertions passed');

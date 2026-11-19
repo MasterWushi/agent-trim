@@ -156,4 +156,5 @@ function mineEntry(h) {
   }
 }
 
+fs.rmSync(sandbox, { recursive: true, force: true });
 console.log('merge-hooks.test.js: all assertions passed');
