@@ -6,7 +6,7 @@
 // state (a bounded ring buffer) and returns a `recovery` object for the
 // caller to attach to a metrics record. No raw command text, file path, or
 // output content is ever stored: only hashes/fingerprints.
-const crypto = require('crypto');
+// crypto is required lazily (it costs ~2.5 ms of every hook process).
 const { readState, writeState } = require('./session-state');
 
 const KIND = 'trim-recovery';
@@ -14,7 +14,7 @@ const MAX_ENTRIES = 32;
 const WINDOW = 5; // "within the previous 1-5 results"
 
 function hash(s) {
-  return crypto.createHash('sha256').update(String(s == null ? '' : s)).digest('hex').slice(0, 16);
+  return require('crypto').createHash('sha256').update(String(s == null ? '' : s)).digest('hex').slice(0, 16);
 }
 
 // entry (caller-supplied, per tool result):

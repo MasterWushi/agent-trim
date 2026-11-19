@@ -25,41 +25,41 @@ Iterations: 20 measured per scenario, 1 warmup discarded.
 
 | scenario | adapter | telemetry | iters | p50 ms | p95 ms | in bytes | emitted bytes | core p50 ms | core p95 ms |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| tiny bash | claude | off | 20 | 58 | 61.46 | 242 | 242 | 0.065 | 0.305 |
-| tiny bash | claude | on | 20 | 62.31 | 121.93 | 242 | 242 | 0.05 | 0.056 |
-| medium bash | claude | off | 20 | 60.11 | 63.74 | 3325 | 211 | 0.227 | 0.371 |
-| medium bash | claude | on | 20 | 62.46 | 64 | 3325 | 211 | 0.215 | 0.233 |
-| large bash (sidecar) | claude | off | 20 | 65.11 | 66.81 | 18714 | 2632 | 2.835 | 3.201 |
-| large bash (sidecar) | claude | on | 20 | 74.18 | 120.37 | 18714 | 2632 | 2.192 | 2.401 |
-| read sidecar (bounded range) | claude | off | 20 | 53.49 | 58.93 | 2400 | 2400 | 0.213 | 0.478 |
-| read sidecar (bounded range) | claude | on | 20 | 58.15 | 65.76 | 2400 | 2400 | 0.176 | 0.195 |
-| read sidecar (unbounded) | claude | off | 20 | 61.47 | 65.81 | 19253 | 163 | 1.266 | 1.406 |
-| read sidecar (unbounded) | claude | on | 20 | 65.68 | 70.05 | 19253 | 163 | 1.267 | 1.411 |
-| tiny bash | codex | off | 20 | 55.66 | 58.48 | 242 | 242 | 0.041 | 0.051 |
-| tiny bash | codex | on | 20 | 54.7 | 58.76 | 242 | 242 | 0.046 | 0.223 |
-| medium bash | codex | off | 20 | 57.13 | 60.47 | 3325 | 211 | 0.182 | 0.197 |
-| medium bash | codex | on | 20 | 58.04 | 61.28 | 3325 | 211 | 0.179 | 0.197 |
-| large bash (sidecar) | codex | off | 20 | 63.77 | 75.96 | 18714 | 2632 | 2.129 | 2.403 |
-| large bash (sidecar) | codex | on | 20 | 63.77 | 65.06 | 18714 | 2632 | 2.134 | 2.377 |
-| large bash (sidecar off) | codex | off | 20 | 59.55 | 61.56 | 18714 | 188 | 0.993 | 1.147 |
-| large bash (sidecar off) | codex | on | 20 | 59.58 | 63.59 | 18714 | 188 | 0.988 | 1.135 |
-| tiny bash | opencode | off | 20 | 0.07 | 0.24 | 242 | 242 | 0.037 | 0.04 |
-| tiny bash | opencode | on | 20 | 0.15 | 0.2 | 242 | 242 | 0.037 | 0.043 |
-| medium bash | opencode | off | 20 | 0.2 | 0.22 | 3325 | 211 | 0.178 | 0.184 |
-| medium bash | opencode | on | 20 | 0.29 | 0.31 | 3325 | 211 | 0.179 | 0.194 |
-| large bash (sidecar) | opencode | off | 20 | 2.11 | 2.27 | 18714 | 2624 | 1.314 | 1.424 |
-| large bash (sidecar) | opencode | on | 20 | 2.16 | 2.32 | 18714 | 2624 | 1.324 | 1.454 |
-| large bash (sidecar off) | opencode | off | 20 | 1.06 | 1.21 | 18714 | 188 | 1.014 | 1.14 |
-| large bash (sidecar off) | opencode | on | 20 | 1.2 | 1.35 | 18714 | 188 | 1.045 | 1.202 |
-| tiny bash | pi | off | 20 | 0.47 | 0.71 | 242 | 242 | 0.042 | 0.052 |
-| tiny bash | pi | on | 20 | 0.94 | 1.06 | 242 | 242 | 0.039 | 0.046 |
-| medium bash | pi | off | 20 | 0.6 | 0.68 | 3325 | 211 | 0.172 | 0.174 |
-| medium bash | pi | on | 20 | 1.09 | 1.14 | 3325 | 211 | 0.177 | 0.183 |
-| large bash (sidecar) | pi | off | 20 | 2.61 | 3.03 | 18714 | 2632 | 2.116 | 3.393 |
-| large bash (sidecar) | pi | on | 20 | 3.38 | 3.76 | 18714 | 2632 | 2.026 | 2.234 |
-| large bash (sidecar off) | pi | off | 20 | 1.48 | 1.64 | 18714 | 188 | 0.983 | 1.128 |
-| large bash (sidecar off) | pi | on | 20 | 2.11 | 2.32 | 18714 | 188 | 0.945 | 1.113 |
-| read sidecar (bounded range) | pi | off | 20 | 0.39 | 0.57 | 2400 | 2400 | 0.162 | 0.18 |
-| read sidecar (bounded range) | pi | on | 20 | 0.83 | 0.89 | 2400 | 2400 | 0.17 | 0.201 |
-| read sidecar (unbounded) | pi | off | 20 | 1.74 | 2.01 | 19253 | 163 | 1.19 | 1.317 |
-| read sidecar (unbounded) | pi | on | 20 | 2.41 | 2.71 | 19253 | 163 | 1.207 | 1.375 |
+| tiny bash | claude | off | 20 | 24.96 | 26.94 | 242 | 242 | 0.053 | 0.113 |
+| tiny bash | claude | on | 20 | 34.2 | 35.71 | 242 | 242 | 0.046 | 0.083 |
+| medium bash | claude | off | 20 | 32.81 | 34.17 | 3325 | 211 | 0.131 | 0.206 |
+| medium bash | claude | on | 20 | 36.89 | 38.96 | 3325 | 211 | 0.121 | 0.181 |
+| large bash (sidecar) | claude | off | 20 | 38.57 | 39.78 | 18714 | 2588 | 0.883 | 1.075 |
+| large bash (sidecar) | claude | on | 20 | 39.34 | 40.24 | 18714 | 2588 | 0.814 | 0.981 |
+| read sidecar (bounded range) | claude | off | 20 | 20.84 | 23.08 | 2400 | 2400 | 0.104 | 0.166 |
+| read sidecar (bounded range) | claude | on | 20 | 26.47 | 27.16 | 2400 | 2400 | 0.1 | 0.135 |
+| read sidecar (unbounded) | claude | off | 20 | 33.53 | 34.94 | 19253 | 163 | 0.693 | 0.835 |
+| read sidecar (unbounded) | claude | on | 20 | 38.75 | 40.3 | 19253 | 163 | 0.636 | 0.778 |
+| tiny bash | codex | off | 20 | 25.54 | 26.64 | 242 | 242 | 0.031 | 0.043 |
+| tiny bash | codex | on | 20 | 26.22 | 27.6 | 242 | 242 | 0.027 | 0.043 |
+| medium bash | codex | off | 20 | 26.85 | 28.98 | 3325 | 211 | 0.101 | 0.125 |
+| medium bash | codex | on | 20 | 27.49 | 29.18 | 3325 | 211 | 0.102 | 0.116 |
+| large bash (sidecar) | codex | off | 20 | 37.43 | 40.87 | 18714 | 2588 | 0.826 | 1.004 |
+| large bash (sidecar) | codex | on | 20 | 37.36 | 38.5 | 18714 | 2588 | 0.802 | 0.957 |
+| large bash (sidecar off) | codex | off | 20 | 32.61 | 33.7 | 18714 | 188 | 0.508 | 0.738 |
+| large bash (sidecar off) | codex | on | 20 | 33.5 | 34.64 | 18714 | 188 | 0.491 | 0.623 |
+| tiny bash | opencode | off | 20 | 0.05 | 0.09 | 242 | 242 | 0.021 | 0.023 |
+| tiny bash | opencode | on | 20 | 0.07 | 0.11 | 242 | 242 | 0.02 | 0.024 |
+| medium bash | opencode | off | 20 | 0.11 | 0.14 | 3325 | 211 | 0.09 | 0.102 |
+| medium bash | opencode | on | 20 | 0.13 | 0.16 | 3325 | 211 | 0.085 | 0.106 |
+| large bash (sidecar) | opencode | off | 20 | 0.77 | 1.06 | 18714 | 2580 | 0.509 | 0.578 |
+| large bash (sidecar) | opencode | on | 20 | 0.77 | 0.87 | 18714 | 2580 | 0.511 | 0.607 |
+| large bash (sidecar off) | opencode | off | 20 | 0.48 | 0.56 | 18714 | 188 | 0.468 | 0.555 |
+| large bash (sidecar off) | opencode | on | 20 | 0.5 | 0.6 | 18714 | 188 | 0.463 | 0.542 |
+| tiny bash | pi | off | 20 | 0.18 | 0.22 | 242 | 242 | 0.024 | 0.031 |
+| tiny bash | pi | on | 20 | 0.31 | 0.41 | 242 | 242 | 0.023 | 0.031 |
+| medium bash | pi | off | 20 | 0.23 | 0.26 | 3325 | 211 | 0.085 | 0.096 |
+| medium bash | pi | on | 20 | 0.36 | 0.4 | 3325 | 211 | 0.083 | 0.096 |
+| large bash (sidecar) | pi | off | 20 | 0.9 | 1.02 | 18714 | 2588 | 0.714 | 0.808 |
+| large bash (sidecar) | pi | on | 20 | 1.1 | 1.25 | 18714 | 2588 | 0.711 | 0.795 |
+| large bash (sidecar off) | pi | off | 20 | 0.62 | 0.72 | 18714 | 188 | 0.447 | 0.52 |
+| large bash (sidecar off) | pi | on | 20 | 0.82 | 1 | 18714 | 188 | 0.727 | 0.752 |
+| read sidecar (bounded range) | pi | off | 20 | 0.12 | 0.19 | 2400 | 2400 | 0.084 | 0.096 |
+| read sidecar (bounded range) | pi | on | 20 | 0.24 | 0.26 | 2400 | 2400 | 0.081 | 0.113 |
+| read sidecar (unbounded) | pi | off | 20 | 0.74 | 0.88 | 19253 | 163 | 0.559 | 0.642 |
+| read sidecar (unbounded) | pi | on | 20 | 0.95 | 1.06 | 19253 | 163 | 0.559 | 0.642 |

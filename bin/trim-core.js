@@ -7,7 +7,7 @@
 // are evidence, not noise: they get a much larger cap than passing runs.
 
 // Caps are in lines. TRIM_MAX_LINES is honored as a legacy alias for the fail cap.
-const crypto = require('crypto');
+// crypto is required lazily in sha256(): it costs ~2.5 ms of every hook process.
 const { effectiveCaps } = require('./profiles');
 // Enumeration carve-out cap: large enough that a normal noisy build/log passes
 // whole — no omission markers at all — so a model asked to report EVERY item
@@ -466,7 +466,7 @@ function sweepSidecars(fs, path, now) {
 // model). Idempotent per content. Returns the file path, or null on any
 // filesystem trouble (callers fall back to inline capping).
 function sha256(text) {
-  return `sha256:${crypto.createHash('sha256').update(text).digest('hex')}`;
+  return `sha256:${require('crypto').createHash('sha256').update(text).digest('hex')}`;
 }
 
 // Same input in the same session -> same file, so the digest and the write

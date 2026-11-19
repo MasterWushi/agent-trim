@@ -371,10 +371,7 @@ function respond(compressed) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
-let buf = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (d) => (buf += d));
-process.stdin.on('end', () => {
+function main(buf) {
   try {
     if (process.env.TRIM_OFF === '1') return process.exit(0);
     let evt;
@@ -389,4 +386,22 @@ process.stdin.on('end', () => {
     /* never block the tool on adapter failure */
   }
   process.exit(0);
-});
+}
+
+// A synchronous read of the stdin pipe saves ~3 ms per call over stream
+// events. If it throws (a non-blocking or Windows pipe), fall back to the
+// stream; input that was cut by the failed read fails JSON.parse and the
+// tool result passes untouched.
+let input;
+try {
+  input = fs.readFileSync(0, 'utf8');
+} catch {
+  input = undefined;
+}
+if (input !== undefined) main(input);
+else {
+  let buf = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => (buf += d));
+  process.stdin.on('end', () => main(buf));
+}

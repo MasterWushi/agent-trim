@@ -1,6 +1,6 @@
 'use strict';
 
-const crypto = require('crypto');
+// crypto is required lazily (it costs ~2.5 ms of every hook process).
 const { readState, writeState } = require('./session-state');
 const { stripAnsi } = require('../trim-core');
 
@@ -14,7 +14,7 @@ function normalize(text) {
 }
 
 function hashText(text) {
-  return crypto.createHash('sha256').update(normalize(text)).digest('hex');
+  return require('crypto').createHash('sha256').update(normalize(text)).digest('hex');
 }
 
 function detectDuplicate(sessionId, text, now = Date.now()) {

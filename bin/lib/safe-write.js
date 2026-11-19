@@ -8,7 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const crypto = require('crypto');
+// crypto is required lazily: loading it costs ~2.5 ms of every hook process,
+// and most calls never write a file.
 
 function safeWriteFileSync(target, content) {
   const dir = path.dirname(target);
@@ -37,7 +38,7 @@ function safeWriteFileSync(target, content) {
     if (e.code !== 'ENOENT') throw e;
   }
 
-  const tmpPath = path.join(realDir, `.${path.basename(target)}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`);
+  const tmpPath = path.join(realDir, `.${path.basename(target)}.${process.pid}.${require('crypto').randomBytes(4).toString('hex')}.tmp`);
   const O_NOFOLLOW = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
   const fd = fs.openSync(tmpPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | O_NOFOLLOW, 0o600);
   try {
