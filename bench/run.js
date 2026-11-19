@@ -96,7 +96,7 @@ const CASES = [
   // regressions from real sessions: a config file viewed through sed at high
   // pressure lost its hooks block; ls -la rows folded and lost file names
   { file: 'claude-settings.json', opts: { exitCode: 0, command: "sed -n '1,200p' ~/.claude/settings.json", scale: 0.5 }, mustEqual: true },
-  { file: 'ls-la.txt', opts: { exitCode: 0, command: 'ls -la' }, mustEqual: true },
+  { file: 'ls-la.txt', opts: { exitCode: 0 }, mustEqual: true }, // no command: the fold rule itself
 ];
 
 const rows = [];

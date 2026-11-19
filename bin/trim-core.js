@@ -592,57 +592,80 @@ function isExactSidecarRange(filePath, input, content) {
   return content.split('\n').length <= SIDECAR_EXACT_MAX_LINES;
 }
 
-// ---- shell file views ----
+// ---- shell views ----
 // `cat settings.json`, `sed -n 1,80p src/app.ts`, `jq .hooks cfg.json | head`,
-// `git diff src/` are the shell form of a Read: the agent asked for exact file content. Read
-// passes source untouched; a capped or folded shell view of the same file cut
-// whole blocks (a settings.json lost its `hooks` key at high pressure) and
-// cost a TRIM_OFF=1 rerun. So a command that only views files, none of them
-// log-shaped or generated, passes through byte-identical. Conservative parse:
-// anything with substitution, redirects into files, or an unknown program in
-// the pipeline is not a file view and keeps the normal pipeline.
-const VIEW_FIRST = new Set(['cat', 'head', 'tail', 'nl', 'bat', 'batcat', 'less', 'more']);
-const VIEW_SCRIPTED = new Set(['sed', 'jq', 'yq', 'awk']); // first operand is a script, then files
-const VIEW_FILTERS = new Set([...VIEW_FIRST, ...VIEW_SCRIPTED, 'grep', 'sort', 'uniq', 'cut', 'tr', 'column', 'wc']);
-const VIEW_TOKEN_RE = /'[^']*'|"[^"]*"|\S+/g;
+// `git diff src/`, `rg -n parseConfig src | head`, `ls -la` are the shell form
+// of a Read or a Grep: the agent asked for exact content it is about to act
+// on. Read passes source untouched; capped or folded shell views of the same
+// content cut whole blocks (a settings.json lost its `hooks` key at high
+// pressure) and agents reran them with TRIM_OFF=1 — 461 times across 131
+// real transcripts. These outputs are small (p90 105–276 lines), so the cap
+// saved little. A command that only views, searches or lists — no log-shaped
+// or generated file named — passes through byte-identical. Conservative
+// parse: substitution, redirects, background jobs, or any program outside
+// these sets keeps the normal pipeline. TRIM_VIEW=off disables the rule.
+const VIEW_MIN_OPERANDS = new Map([
+  ...['cat', 'head', 'tail', 'nl', 'bat', 'batcat', 'less', 'more', 'grep', 'egrep', 'rg', 'ag'].map((p) => [p, 1]),
+  ...['sed', 'jq', 'yq', 'awk'].map((p) => [p, 2]), // a script, then files
+  ['ls', 0],
+]);
+const VIEW_NEUTRAL = new Set(['cd', 'echo', 'printf', 'pwd', 'wc', 'true']); // allowed, not a view
+const VIEW_FILTERS = new Set([...VIEW_MIN_OPERANDS.keys(), 'sort', 'uniq', 'cut', 'tr', 'column', 'wc']);
+const SHELL_TOKEN_RE = /&&|\|\||[|;&]|(?:'[^']*'|"(?:[^"\\]|\\.)*"|\\.|[^\s|;&'"\\])+/g;
 // `git diff` / `git show` / `diff` print file content as hunks: a capped diff
 // drops hunks the agent is reviewing or about to commit. Summary forms keep
 // the normal pipeline (the diffstat strategy handles --stat).
 const DIFF_SUMMARY_RE = /^--(?:stat|numstat|shortstat|dirstat|name-only|name-status|summary|compact-summary)\b/;
+const DATA_LOG_RE = /\.(?:jsonl|ndjson)$/i;
+const unquote = (t) => t.replace(/'([^']*)'|"((?:[^"\\]|\\.)*)"/g, '$1$2');
 
-function isContentDiff(prog, tokens) {
-  if (tokens.some((t) => DIFF_SUMMARY_RE.test(t))) return false;
+function isContentDiff(prog, args) {
+  if (args.some((t) => DIFF_SUMMARY_RE.test(t))) return false;
   if (prog === 'diff') return true;
   if (prog !== 'git') return false;
   let i = 0;
-  while (i < tokens.length && tokens[i].startsWith('-')) i += tokens[i] === '-C' || tokens[i] === '-c' ? 2 : 1;
-  return tokens[i] === 'diff' || tokens[i] === 'show';
+  while (i < args.length && args[i].startsWith('-')) i += args[i] === '-C' || args[i] === '-c' ? 2 : 1;
+  return args[i] === 'diff' || args[i] === 'show';
 }
-const DATA_LOG_RE = /\.(?:jsonl|ndjson)$/i;
+
+// One pipeline stage: true = a view, false = not allowed, null = neutral.
+function viewStage(words, first) {
+  while (words.length && /^[A-Za-z_]\w*=/.test(words[0])) words.shift();
+  if (!words.length) return false;
+  const prog = unquote(words[0]).replace(/^.*\//, '');
+  const args = words.slice(1);
+  // stderr to /dev/null or to stdout is fine; any other redirect writes or reads files
+  const redirects = args.filter((t) => /[<>]/.test(t.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '')));
+  if (redirects.some((t) => !/^\d?>(?:&\d|\/dev\/null)$/.test(t))) return false;
+  const rest = args.filter((t) => !redirects.includes(t));
+  const operands = rest.filter((t) => !t.startsWith('-')).map(unquote);
+  if (operands.some((f) => isLogPath(f) || isGeneratedPath(f) || DATA_LOG_RE.test(f))) return false;
+  if (VIEW_NEUTRAL.has(prog)) return null;
+  if (first && isContentDiff(prog, rest)) return true;
+  if (prog === 'sed' && rest.some((t) => /^-[a-z]*i|^--in-place/.test(t))) return false; // edits, not a view
+  if (!first) return VIEW_FILTERS.has(prog) ? null : false;
+  return VIEW_MIN_OPERANDS.has(prog) && operands.length >= VIEW_MIN_OPERANDS.get(prog);
+}
 
 function isFileView(command) {
-  if (typeof command !== 'string' || command.includes('\n') || /[`<]|\$\(/.test(command)) return false;
-  const cmd = command.replace(/\s+\d?>&\d|\s+\d?>\s*\/dev\/null/g, '');
-  if (cmd.includes('>')) return false;
+  if (process.env.TRIM_VIEW === 'off') return false;
+  if (typeof command !== 'string' || command.includes('\n')) return false;
+  if (/[`]|\$\(/.test(command.replace(/'[^']*'/g, ''))) return false;
+  const tokens = command.match(SHELL_TOKEN_RE) || [];
   let viewed = 0;
-  for (const chain of cmd.split(/&&|\|\||;/)) {
-    const pipe = chain.split('|');
-    for (let p = 0; p < pipe.length; p++) {
-      const tokens = pipe[p].trim().match(VIEW_TOKEN_RE) || [];
-      while (tokens.length && /^[A-Za-z_]\w*=/.test(tokens[0])) tokens.shift();
-      if (!tokens.length) return false;
-      const prog = tokens.shift().replace(/^.*\//, '');
-      if (prog === 'cd' && pipe.length === 1) continue;
-      const diff = p === 0 && isContentDiff(prog, tokens);
-      if (!diff && !(p === 0 ? VIEW_FIRST.has(prog) || VIEW_SCRIPTED.has(prog) : VIEW_FILTERS.has(prog))) return false;
-      if (prog === 'sed' && tokens.some((t) => /^-[a-z]*i|^--in-place/.test(t))) return false; // edits, not a view
-      const operands = tokens.filter((t) => !t.startsWith('-'));
-      for (const t of operands) {
-        const f = t.replace(/^['"]|['"]$/g, '');
-        if (isLogPath(f) || isGeneratedPath(f) || DATA_LOG_RE.test(f)) return false;
-      }
-      if (diff || (p === 0 && operands.length >= (VIEW_SCRIPTED.has(prog) ? 2 : 1))) viewed++;
+  let words = [];
+  let first = true;
+  for (const tok of [...tokens, ';']) {
+    if (tok === '&') return false;
+    if (tok !== '|' && tok !== '&&' && tok !== '||' && tok !== ';') {
+      words.push(tok);
+      continue;
     }
+    const r = viewStage(words, first);
+    if (r === false) return false;
+    if (r === true) viewed++;
+    words = [];
+    first = tok !== '|';
   }
   return viewed > 0;
 }
