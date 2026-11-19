@@ -381,6 +381,25 @@ function hookOut(r) {
   assert.strictEqual(state.compactionEpoch, 1);
   fs.rmSync(statePath('trim-pressure', id), { force: true });
 }
+// after compaction, adaptive caps count only bytes written since: a 1.2MB
+// transcript with a fresh compaction is low pressure, not high
+{
+  const id = `postcompact-bytes-${process.pid}`;
+  const transcript = path.join(os.tmpdir(), `trim-compact-${process.pid}.jsonl`);
+  fs.writeFileSync(transcript, 'x'.repeat(1200 * 1024));
+  const evt = { tool_name: 'Bash', tool_input: { command: 'npm install' }, tool_response: { stdout: bigOut }, transcript_path: transcript, session_id: id };
+  run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off' });
+  assert.strictEqual(readState('trim-pressure', id).pressureBand, 'high', 'big transcript, no compaction -> high');
+  run('claude-postcompact.js', JSON.stringify({ session_id: id, transcript_path: transcript }));
+  assert.strictEqual(readState('trim-pressure', id).compactBytes, 1200 * 1024, 'compaction records the transcript size');
+  fs.appendFileSync(transcript, 'y'.repeat(50 * 1024));
+  run('claude-posttooluse.js', JSON.stringify(evt), { TRIM_NOTE: 'off' });
+  const after = readState('trim-pressure', id);
+  assert.strictEqual(after.pressureBand, 'low', 'only post-compaction growth counts');
+  assert.strictEqual(after.compactBytes, 1200 * 1024, 'base survives later state writes');
+  fs.rmSync(transcript, { force: true });
+  fs.rmSync(statePath('trim-pressure', id), { force: true });
+}
 // current Claude PreCompact contract has no instruction output channel
 {
   const r = run('claude-precompact.js', JSON.stringify({ hook_event_name: 'PreCompact' }));

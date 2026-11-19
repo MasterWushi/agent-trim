@@ -103,7 +103,12 @@ function compressionOutput(evt, tail) {
     let pressureBand = pressureState.pressureBand || 'low';
     if (process.env.TRIM_ADAPTIVE !== 'off') {
       try {
-        const pressure = pressureScale(fs.statSync(evt.transcript_path).size, pressureState.pressureBand || 'low');
+        // The transcript file is append-only: after a compaction it keeps its
+        // full size while the live context restarts small. Count only the
+        // bytes written since the last compaction (PostCompact records them).
+        const size = fs.statSync(evt.transcript_path).size;
+        const base = Number.isFinite(pressureState.compactBytes) && pressureState.compactBytes <= size ? pressureState.compactBytes : 0;
+        const pressure = pressureScale(size - base, pressureState.pressureBand || 'low');
         scale = pressure.scale;
         pressureBand = pressure.band;
       } catch {
@@ -111,7 +116,11 @@ function compressionOutput(evt, tail) {
       }
     }
     if (pressureBand !== pressureState.pressureBand) {
-      writeState(PRESSURE_KIND, evt.session_id, { pressureBand, compactionEpoch: pressureState.compactionEpoch || 0 });
+      writeState(PRESSURE_KIND, evt.session_id, {
+        pressureBand,
+        compactionEpoch: pressureState.compactionEpoch || 0,
+        compactBytes: pressureState.compactBytes,
+      });
     }
     const r = evt.tool_response;
     // Read results are compressed ONLY for log-shaped, machine-generated, or

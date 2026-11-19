@@ -5,7 +5,8 @@
 // sentinel file — but compaction summarizes the note away while the sentinel
 // still says "delivered", so markers appearing after compaction arrive
 // unexplained and risk being read as prompt injection. Deleting the sentinel
-// re-arms delivery on the next marker. Emits nothing:
+// re-arms delivery on the next marker. It also records the transcript size,
+// so adaptive caps measure only post-compaction growth. Emits nothing:
 // re-injecting the note unconditionally on every compaction would spend
 // tokens on sessions that never emit another marker. Ported from hush, MIT.
 
@@ -32,9 +33,18 @@ function main() {
       /* ENOENT fine; anything else not worth breaking a session over */
     }
     const state = readState('trim-pressure', data.session_id);
+    // Transcript size at compaction: PostToolUse measures pressure from here,
+    // because the file keeps every pre-compaction byte.
+    let compactBytes = state.compactBytes;
+    try {
+      compactBytes = fs.statSync(data.transcript_path).size;
+    } catch {
+      /* no transcript: keep the previous base */
+    }
     writeState('trim-pressure', data.session_id, {
       pressureBand: 'low',
       compactionEpoch: (Number.isInteger(state.compactionEpoch) ? state.compactionEpoch : 0) + 1,
+      compactBytes,
     });
     clearDuplicates(data.session_id);
   } catch {
