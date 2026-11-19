@@ -45,7 +45,7 @@ fs.mkdirSync(path.join(HOME, '.config', 'opencode'), { recursive: true });
 fs.mkdirSync(path.join(HOME, '.pi', 'agent'), { recursive: true });
 
 const env = { ...process.env, HOME };
-const install = () => execFileSync('bash', [path.join(WORK, 'install.sh')], { env, encoding: 'utf8' });
+const install = (...args) => execFileSync('bash', [path.join(WORK, 'install.sh'), ...args], { env, encoding: 'utf8' });
 const uninstall = () => execFileSync('bash', [path.join(WORK, 'uninstall.sh')], { env, encoding: 'utf8' });
 const settings = () => JSON.parse(fs.readFileSync(path.join(HOME, '.claude', 'settings.json'), 'utf8'));
 const claudeMd = () => fs.readFileSync(path.join(HOME, '.claude', 'CLAUDE.md'), 'utf8');
@@ -63,12 +63,16 @@ install();
   assert.ok(trimHook, 'trim hook added');
   assert.strictEqual(trimHook.matcher, '^(Bash|Read)$', 'trim hook is scoped to Bash and Read');
   assert.ok(cfg.hooks.SubagentStart && cfg.hooks.PostCompact, 'extras wired');
-  assert.ok(claudeMd().includes('<!-- trim:style:start -->'), 'style appended');
+  assert.ok(!claudeMd().includes('<!-- trim:style:start -->'), 'style block is opt-in: plain install adds none');
   assert.ok(claudeMd().startsWith('# my rules'), 'user CLAUDE.md content intact');
   assert.ok(fs.existsSync(path.join(HOME, '.config', 'opencode', 'plugins', 'trim.ts')), 'opencode plugin installed');
   const piExtension = fs.readFileSync(path.join(HOME, '.pi', 'agent', 'extensions', 'trim.ts'), 'utf8');
   assert.ok(piExtension.includes(path.join(WORK, 'adapters', 'lib', 'pi-runtime.js')), 'pi extension points at installed runtime');
 }
+
+// ---- --style opts in; a later plain install (npm run update) keeps it, once ----
+install('--style');
+assert.ok(claudeMd().includes('<!-- trim:style:start -->'), '--style appends the block');
 
 // ---- second install: idempotent ----
 install();
@@ -81,6 +85,18 @@ install();
   assert.strictEqual(cfg.hooks.PostCompact.length, 1, 'no duplicate compaction hook');
   const styleCount = (claudeMd().match(/<!-- trim:style:start -->/g) || []).length;
   assert.strictEqual(styleCount, 1, 'style block appended once');
+}
+
+// ---- a block the user removed is never added back by a plain install ----
+{
+  const md = path.join(HOME, '.claude', 'CLAUDE.md');
+  const withBlock = claudeMd();
+  fs.writeFileSync(md, withBlock.replace(/\n?\n<!-- trim:style:start -->[\s\S]*?<!-- trim:style:end -->\n?/, ''));
+  install();
+  assert.ok(!claudeMd().includes('trim:style:start'), 'removed style block stays removed after update');
+  install('--no-style');
+  assert.ok(!claudeMd().includes('trim:style:start'), '--no-style still accepted');
+  fs.writeFileSync(md, withBlock);
 }
 
 // ---- uninstall: trim gone, user config intact ----
@@ -115,7 +131,7 @@ uninstall();
   const home3 = path.join(sandbox, 'home3');
   fs.mkdirSync(path.join(home3, '.claude'), { recursive: true });
   fs.mkdirSync(path.join(home3, '.config', 'opencode'), { recursive: true });
-  execFileSync('bash', [path.join(WORK, 'install.sh')], { env: { ...process.env, HOME: home3 }, encoding: 'utf8' });
+  execFileSync('bash', [path.join(WORK, 'install.sh'), '--style'], { env: { ...process.env, HOME: home3 }, encoding: 'utf8' });
   const bad = path.join(home3, '.claude', 'settings.json');
   fs.writeFileSync(bad, '{not json');
   execFileSync('bash', [path.join(WORK, 'uninstall.sh')], { env: { ...process.env, HOME: home3 }, encoding: 'utf8', stdio: 'pipe' });

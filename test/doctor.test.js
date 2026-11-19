@@ -135,9 +135,9 @@ const write = (p, s) => {
   assert.strictEqual(drift.level, 'stale', 'edited style/TERSE.md never reaches an installed file');
   assert.match(drift.fix, /delete the trim:style block/);
 
-  // no block at all (installed with --no-style) is a choice, not drift
+  // no block at all (the default: style is opt-in) is a choice, not drift
   write(md, '# mine, no trim block\n');
-  assert.strictEqual(find(run(home).report, 'claude style').length, 0, '--no-style install is not reported as drift');
+  assert.strictEqual(find(run(home).report, 'claude style').length, 0, 'install without --style is not reported as drift');
   fs.rmSync(home, { recursive: true, force: true });
 }
 

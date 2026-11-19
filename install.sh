@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # trim installer — wires the compressor into every detected agent harness.
-# Usage: ./install.sh [--no-style]
+# Usage: ./install.sh [--style]
+#   --style     also append style/TERSE.md to each agent's instructions file.
+#               Opt-in: a plain run (and `npm run update`) never adds the block,
+#               so a block you removed stays removed. --no-style is accepted
+#               for compatibility and is the default.
 # Idempotent: safe to re-run. Backups of every modified file go to backup/.
 set -euo pipefail
 
@@ -13,8 +17,14 @@ if [[ "${1:-}" == "--check" ]]; then
   exec node "$ROOT/bin/trim-doctor.js" "${@:2}"
 fi
 
-STYLE=1
-[[ "${1:-}" == "--no-style" ]] && STYLE=0
+STYLE=0
+for arg in "$@"; do
+  case "$arg" in
+    --style) STYLE=1 ;;
+    --no-style) STYLE=0 ;;
+    *) echo "unknown option: $arg (usage: ./install.sh [--style] | --check)"; exit 2 ;;
+  esac
+done
 
 BK="$ROOT/backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BK"

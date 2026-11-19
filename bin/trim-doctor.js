@@ -134,7 +134,7 @@ if (STYLE_SRC) {
     const text = fs.readFileSync(file, 'utf8');
     const start = text.indexOf('<!-- trim:style:start -->');
     const end = text.indexOf('<!-- trim:style:end -->');
-    if (start === -1 || end === -1 || end < start) continue; // no block: user opted out with --no-style
+    if (start === -1 || end === -1 || end < start) continue; // no block: style is opt-in (install.sh --style)
     const installed = text.slice(start + '<!-- trim:style:start -->'.length, end).trim();
     if (installed === STYLE_SRC.trim()) add('ok', `${t.name} style`, `${t.file} style block matches style/TERSE.md`, null);
     else
@@ -142,7 +142,7 @@ if (STYLE_SRC) {
         'stale',
         `${t.name} style`,
         `${t.file} style block differs from style/TERSE.md — install.sh skips files that already carry the marker`,
-        `delete the trim:style block in ${t.file}, then ./install.sh`
+        `delete the trim:style block in ${t.file}, then ./install.sh --style`
       );
   }
 }

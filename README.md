@@ -64,8 +64,8 @@ There's also an optional style file (`style/TERSE.md`) that tells the agent how 
 
 ```bash
 git clone https://github.com/MasterWushi/agent-trim && cd agent-trim
-./install.sh              # compression hooks + terse style
-./install.sh --no-style   # hooks only, keep your own style rules
+./install.sh           # compression hooks only (default; keeps your own style rules)
+./install.sh --style   # also append the terse style block (opt-in)
 ```
 
 Requires Node.js. The installer detects which of the four agents you have, wires the hook into each, and backs up every file it touches into `backup/`. Safe to re-run.
@@ -120,7 +120,7 @@ There is no copy of the compressor anywhere else on disk to go stale.
 | Drift | Why | Fix |
 |---|---|---|
 | Rendered harness wrappers (`~/.config/opencode/plugins/trim.ts`, `~/.pi/agent/extensions/trim.ts`) | `install.sh` **copies** these, substituting the repo path. Both are kept thin — they `require` their behaviour from `adapters/lib/*-runtime.js` in the repo — so they only change when a host's own plugin API does. | `./install.sh` |
-| Style block in `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, … | `append_style` skips any file already carrying the `<!-- trim:style:start -->` marker, so edits to `style/TERSE.md` never reach an existing install. | delete the block, then `./install.sh` |
+| Style block in `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, … | `append_style` skips any file already carrying the `<!-- trim:style:start -->` marker, so edits to `style/TERSE.md` never reach an existing install. | delete the block, then `./install.sh --style` |
 | Hooks pointing at an **older clone** | Nothing you pull *in this directory* can change a hook that names a different path. | `./install.sh` |
 | Hook settings from an **older install** (matcher, events, timeouts) | `settings.json` / `hooks.json` hold a copy of the hook list in `adapters/merge-hooks.js`; only `install.sh` rewrites it. The doctor names each event that differs. | `./install.sh` |
 
@@ -151,7 +151,7 @@ One shared compressor (`bin/trim-core.js`), four thin adapters using each agent'
 | opencode | plugin `tool.execute.after` | mutates `output.output` |
 | pi.dev | extension `tool_result` | returns `content`, preserving `details` and `isError` |
 
-The style file is appended to each agent's global instructions file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, etc.) inside `<!-- trim:style:start/end -->` markers, so the uninstaller can remove exactly what was added.
+With `--style`, the style file is appended to each agent's global instructions file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, etc.) inside `<!-- trim:style:start/end -->` markers, so the uninstaller can remove exactly what was added. A plain `./install.sh` (and `npm run update`) never adds the block, so a block you delete stays deleted.
 
 ## Tuning
 
