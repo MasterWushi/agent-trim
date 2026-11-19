@@ -23,11 +23,11 @@ function wantedHooks(which, root) {
         PostToolUse: [
           {
             matcher: '^(Bash|Read)$',
-            hooks: [{ type: 'command', command: node(root, 'claude-posttooluse.js'), timeout: 10000 }],
+            hooks: [{ type: 'command', command: node(root, 'claude-posttooluse.js'), timeout: 10 }],
           },
         ],
-        SubagentStart: [{ hooks: [{ type: 'command', command: node(root, 'claude-subagent-brief.js'), timeout: 5000 }] }],
-        PostCompact: [{ hooks: [{ type: 'command', command: node(root, 'claude-postcompact.js'), timeout: 5000 }] }],
+        SubagentStart: [{ hooks: [{ type: 'command', command: node(root, 'claude-subagent-brief.js'), timeout: 5 }] }],
+        PostCompact: [{ hooks: [{ type: 'command', command: node(root, 'claude-postcompact.js'), timeout: 5 }] }],
       }
     : {
         PostToolUse: [{ hooks: [{ type: 'command', command: node(root, 'codex-posttooluse.js'), timeout: 10 }] }],
