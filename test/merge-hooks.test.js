@@ -137,4 +137,23 @@ function mineEntry(h) {
   return JSON.stringify(h).includes(`${REPO}/adapters/`);
 }
 
+// Claude Code and Codex read hook `timeout` in SECONDS. A value written in
+// milliseconds (10000) means a hung hook blocks the agent for hours.
+{
+  const { wantedHooks } = require('../adapters/merge-hooks.js');
+  for (const which of ['claude', 'codex']) {
+    let seen = 0;
+    for (const [event, entries] of Object.entries(wantedHooks(which, REPO))) {
+      for (const entry of entries) {
+        for (const h of entry.hooks) {
+          seen++;
+          assert.ok(Number.isFinite(h.timeout) && h.timeout > 0 && h.timeout <= 60,
+            `${which} ${event} hook timeout must be 1..60 seconds, got ${h.timeout}`);
+        }
+      }
+    }
+    assert.ok(seen > 0, `${which} has hooks to check`);
+  }
+}
+
 console.log('merge-hooks.test.js: all assertions passed');
