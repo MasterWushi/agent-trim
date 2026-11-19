@@ -593,8 +593,8 @@ function isExactSidecarRange(filePath, input, content) {
 }
 
 // ---- shell file views ----
-// `cat settings.json`, `sed -n 1,80p src/app.ts`, `jq .hooks cfg.json | head`
-// are the shell form of a Read: the agent asked for exact file content. Read
+// `cat settings.json`, `sed -n 1,80p src/app.ts`, `jq .hooks cfg.json | head`,
+// `git diff src/` are the shell form of a Read: the agent asked for exact file content. Read
 // passes source untouched; a capped or folded shell view of the same file cut
 // whole blocks (a settings.json lost its `hooks` key at high pressure) and
 // cost a TRIM_OFF=1 rerun. So a command that only views files, none of them
@@ -605,6 +605,19 @@ const VIEW_FIRST = new Set(['cat', 'head', 'tail', 'nl', 'bat', 'batcat', 'less'
 const VIEW_SCRIPTED = new Set(['sed', 'jq', 'yq', 'awk']); // first operand is a script, then files
 const VIEW_FILTERS = new Set([...VIEW_FIRST, ...VIEW_SCRIPTED, 'grep', 'sort', 'uniq', 'cut', 'tr', 'column', 'wc']);
 const VIEW_TOKEN_RE = /'[^']*'|"[^"]*"|\S+/g;
+// `git diff` / `git show` / `diff` print file content as hunks: a capped diff
+// drops hunks the agent is reviewing or about to commit. Summary forms keep
+// the normal pipeline (the diffstat strategy handles --stat).
+const DIFF_SUMMARY_RE = /^--(?:stat|numstat|shortstat|dirstat|name-only|name-status|summary|compact-summary)\b/;
+
+function isContentDiff(prog, tokens) {
+  if (tokens.some((t) => DIFF_SUMMARY_RE.test(t))) return false;
+  if (prog === 'diff') return true;
+  if (prog !== 'git') return false;
+  let i = 0;
+  while (i < tokens.length && tokens[i].startsWith('-')) i += tokens[i] === '-C' || tokens[i] === '-c' ? 2 : 1;
+  return tokens[i] === 'diff' || tokens[i] === 'show';
+}
 const DATA_LOG_RE = /\.(?:jsonl|ndjson)$/i;
 
 function isFileView(command) {
@@ -620,14 +633,15 @@ function isFileView(command) {
       if (!tokens.length) return false;
       const prog = tokens.shift().replace(/^.*\//, '');
       if (prog === 'cd' && pipe.length === 1) continue;
-      if (!(p === 0 ? VIEW_FIRST.has(prog) || VIEW_SCRIPTED.has(prog) : VIEW_FILTERS.has(prog))) return false;
+      const diff = p === 0 && isContentDiff(prog, tokens);
+      if (!diff && !(p === 0 ? VIEW_FIRST.has(prog) || VIEW_SCRIPTED.has(prog) : VIEW_FILTERS.has(prog))) return false;
       if (prog === 'sed' && tokens.some((t) => /^-[a-z]*i|^--in-place/.test(t))) return false; // edits, not a view
       const operands = tokens.filter((t) => !t.startsWith('-'));
       for (const t of operands) {
         const f = t.replace(/^['"]|['"]$/g, '');
         if (isLogPath(f) || isGeneratedPath(f) || DATA_LOG_RE.test(f)) return false;
       }
-      if (p === 0 && operands.length >= (VIEW_SCRIPTED.has(prog) ? 2 : 1)) viewed++;
+      if (diff || (p === 0 && operands.length >= (VIEW_SCRIPTED.has(prog) ? 2 : 1))) viewed++;
     }
   }
   return viewed > 0;

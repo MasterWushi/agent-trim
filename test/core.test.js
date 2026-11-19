@@ -57,6 +57,10 @@ assert.strictEqual(compress('x\nx\ny').out, 'x\nx\ny');
     'jq . settings.json',
     'cd /repo && head -100 src/config.yaml',
     'cat pyproject.toml 2>/dev/null',
+    'git diff',
+    'git -C /repo show HEAD~1 -- src/app.ts',
+    'git --no-pager diff --cached | head -300',
+    'diff -u a.yaml b.yaml',
   ]) {
     assert.ok(isFileView(command), `file view: ${command}`);
     assert.strictEqual(compress(cfg, { command, scale: 0.5, exitCode: 0 }).out, cfg, `byte-identical: ${command}`);
@@ -67,6 +71,7 @@ assert.strictEqual(compress('x\nx\ny').out, 'x\nx\ny');
   for (const command of [
     'ls -la', 'npm test', 'tail -n 500 logs/app.log', 'cat package-lock.json', 'jq . events.jsonl',
     'curl -s x | jq .', 'cat a.json > b.json', 'cat $(ls)', 'jq .hooks', 'sed -i s/a/b/ f.js', 'cat a.js; npm test',
+    'git diff --stat', 'git show --name-only HEAD', 'git log -p', 'git diff -- package-lock.json', 'git status',
   ]) assert.ok(!isFileView(command), `not a file view: ${command}`);
 }
 // template collapse never swallows a signal line
