@@ -1,0 +1,21 @@
+total 96
+drwxr-xr-x  9 dev dev  4096 Nov 10 15:14 .
+drwxr-xr-x 14 dev dev  4096 Nov 14 12:23 ..
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 adapters
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 bench
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 bin
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 docs
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 style
+drwxr-xr-x  2 dev dev  4096 Nov 19 09:43 test
+-rw-r--r--  1 dev dev  1980 Nov 19 09:43 AGENTS.md
+-rw-r--r--  1 dev dev 15470 Nov 19 09:43 IMPLEMENTATION-PLAN.md
+-rw-r--r--  1 dev dev  1070 Nov 19 09:43 LICENSE
+-rw-r--r--  1 dev dev 17048 Nov 19 09:43 README.md
+-rw-r--r--  1 dev dev  3226 Nov 19 09:43 install.sh
+-rw-r--r--  1 dev dev  1040 Nov 19 09:43 package.json
+-rw-r--r--  1 dev dev  1583 Nov 19 09:43 uninstall.sh
+-rw-r--r--  1 dev dev  4410 Nov 19 09:43 CHANGELOG.md
+-rw-r--r--  1 dev dev   512 Nov 19 09:43 tsconfig.json
+-rw-r--r--  1 dev dev   880 Nov 19 09:43 eslint.config.js
+-rw-r--r--  1 dev dev   301 Nov 19 09:43 vitest.config.ts
+-rw-r--r--  1 dev dev   640 Nov 19 09:43 Makefile

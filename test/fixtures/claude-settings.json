@@ -1,0 +1,87 @@
+{
+  "$schema": "x",
+  "model": "opus",
+  "env": {
+    "A": "1",
+    "B": "2"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cmd0:*)",
+      "Bash(cmd1:*)",
+      "Bash(cmd2:*)",
+      "Bash(cmd3:*)",
+      "Bash(cmd4:*)",
+      "Bash(cmd5:*)",
+      "Bash(cmd6:*)",
+      "Bash(cmd7:*)",
+      "Bash(cmd8:*)",
+      "Bash(cmd9:*)",
+      "Bash(cmd10:*)",
+      "Bash(cmd11:*)",
+      "Bash(cmd12:*)",
+      "Bash(cmd13:*)",
+      "Bash(cmd14:*)",
+      "Bash(cmd15:*)",
+      "Bash(cmd16:*)",
+      "Bash(cmd17:*)",
+      "Bash(cmd18:*)",
+      "Bash(cmd19:*)"
+    ],
+    "deny": [
+      "Read(.env)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Read)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /x/adapters/claude-posttooluse.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /x/a.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /x/b.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "x"
+  },
+  "enabledPlugins": {
+    "a": true,
+    "b": true,
+    "c": true,
+    "d": true,
+    "e": true,
+    "f": true,
+    "g": true,
+    "h": true,
+    "i": true,
+    "j": true
+  }
+}

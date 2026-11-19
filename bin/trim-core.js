@@ -135,6 +135,7 @@ function isFileDump(command) {
 // lines share a template iff: same token count; >=50% of positions
 // token-identical; and >=2 identical positions are "anchor" tokens (>=3 chars,
 // no digits) — the anchor floor stops merges on a shared timestamp alone.
+// Every varying position must hold a digit-bearing value (id, count, time).
 // Comparison is always against the run's first line, so the run stays anchored
 // to one shape. A SIGNAL_RE line never joins a run and always breaks one —
 // over-normalizing distinct errors is the failure mode this sidesteps.
@@ -150,6 +151,11 @@ function shareTemplate(aTokens, bTokens) {
     if (aTokens[i] === bTokens[i]) {
       same++;
       if (aTokens[i].length >= 3 && !/\d/.test(aTokens[i])) anchors++;
+    } else if (!/\d/.test(aTokens[i]) || !/\d/.test(bTokens[i])) {
+      // A varying token with no digit is a NAME (a file in `ls -l`, a key, a
+      // package), not a value: each line identifies a different item, and
+      // folding the run deletes exactly what the listing was run to show.
+      return false;
     }
   }
   return same / aTokens.length >= 0.5 && anchors >= 2;
@@ -586,6 +592,47 @@ function isExactSidecarRange(filePath, input, content) {
   return content.split('\n').length <= SIDECAR_EXACT_MAX_LINES;
 }
 
+// ---- shell file views ----
+// `cat settings.json`, `sed -n 1,80p src/app.ts`, `jq .hooks cfg.json | head`
+// are the shell form of a Read: the agent asked for exact file content. Read
+// passes source untouched; a capped or folded shell view of the same file cut
+// whole blocks (a settings.json lost its `hooks` key at high pressure) and
+// cost a TRIM_OFF=1 rerun. So a command that only views files, none of them
+// log-shaped or generated, passes through byte-identical. Conservative parse:
+// anything with substitution, redirects into files, or an unknown program in
+// the pipeline is not a file view and keeps the normal pipeline.
+const VIEW_FIRST = new Set(['cat', 'head', 'tail', 'nl', 'bat', 'batcat', 'less', 'more']);
+const VIEW_SCRIPTED = new Set(['sed', 'jq', 'yq', 'awk']); // first operand is a script, then files
+const VIEW_FILTERS = new Set([...VIEW_FIRST, ...VIEW_SCRIPTED, 'grep', 'sort', 'uniq', 'cut', 'tr', 'column', 'wc']);
+const VIEW_TOKEN_RE = /'[^']*'|"[^"]*"|\S+/g;
+const DATA_LOG_RE = /\.(?:jsonl|ndjson)$/i;
+
+function isFileView(command) {
+  if (typeof command !== 'string' || command.includes('\n') || /[`<]|\$\(/.test(command)) return false;
+  const cmd = command.replace(/\s+\d?>&\d|\s+\d?>\s*\/dev\/null/g, '');
+  if (cmd.includes('>')) return false;
+  let viewed = 0;
+  for (const chain of cmd.split(/&&|\|\||;/)) {
+    const pipe = chain.split('|');
+    for (let p = 0; p < pipe.length; p++) {
+      const tokens = pipe[p].trim().match(VIEW_TOKEN_RE) || [];
+      while (tokens.length && /^[A-Za-z_]\w*=/.test(tokens[0])) tokens.shift();
+      if (!tokens.length) return false;
+      const prog = tokens.shift().replace(/^.*\//, '');
+      if (prog === 'cd' && pipe.length === 1) continue;
+      if (!(p === 0 ? VIEW_FIRST.has(prog) || VIEW_SCRIPTED.has(prog) : VIEW_FILTERS.has(prog))) return false;
+      if (prog === 'sed' && tokens.some((t) => /^-[a-z]*i|^--in-place/.test(t))) return false; // edits, not a view
+      const operands = tokens.filter((t) => !t.startsWith('-'));
+      for (const t of operands) {
+        const f = t.replace(/^['"]|['"]$/g, '');
+        if (isLogPath(f) || isGeneratedPath(f) || DATA_LOG_RE.test(f)) return false;
+      }
+      if (p === 0 && operands.length >= (VIEW_SCRIPTED.has(prog) ? 2 : 1)) viewed++;
+    }
+  }
+  return viewed > 0;
+}
+
 // ---- read-path detection (adapters that hook file reads) ----
 // Log-shaped: a .log (optionally rotated) extension anywhere, or a
 // .log/.txt/.out file under a directory literally named log/logs. Source code
@@ -843,6 +890,17 @@ function compress(text, opts) {
         inputLines: text.split('\n').length,
         strategy: 'passthrough-condensed',
         reason: 'already condensed by another tool; not ours to re-elide',
+      }),
+    };
+  }
+  if (isFileView(o.command)) {
+    return {
+      out: text,
+      stats: { inBytes: Buffer.byteLength(text), outBytes: Buffer.byteLength(text) },
+      meta: buildMeta(text, text, o, {
+        inputLines: text.split('\n').length,
+        strategy: 'passthrough-file-view',
+        reason: 'shell view of a source/config file; passed through like a Read',
       }),
     };
   }
@@ -1118,6 +1176,7 @@ module.exports = {
   maybeLog,
   extractExitCode,
   isFileDump,
+  isFileView,
   looksLikeFailure,
   FAILURE_RE,
   capLines,

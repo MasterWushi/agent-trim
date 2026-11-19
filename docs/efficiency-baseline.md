@@ -6,10 +6,10 @@ These rows measure the core compressor under each host's option posture, not ada
 
 | runtime posture | fixtures | input bytes | output bytes | ratio |
 |---|---:|---:|---:|---:|
-| claude | 23 | 337392 | 66766 | 0.198 |
-| pi | 23 | 337392 | 66766 | 0.198 |
-| codex | 23 | 337392 | 66766 | 0.198 |
-| opencode | 23 | 337392 | 66766 | 0.198 |
+| claude | 25 | 339934 | 69308 | 0.204 |
+| pi | 25 | 339934 | 69308 | 0.204 |
+| codex | 25 | 339934 | 69308 | 0.204 |
+| opencode | 25 | 339934 | 69308 | 0.204 |
 
 Live collection:
 

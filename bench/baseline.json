@@ -1,11 +1,11 @@
 {
   "summary": {
-    "fixtures": 22,
+    "fixtures": 24,
     "falseElisionFailures": 0,
-    "totalInBytes": 323909,
-    "totalOutBytes": 57642,
-    "overallRatio": 0.178,
-    "estTokensSaved": 66567
+    "totalInBytes": 326451,
+    "totalOutBytes": 60263,
+    "overallRatio": 0.185,
+    "estTokensSaved": 66547
   },
   "rows": [
     {
@@ -154,7 +154,7 @@
     },
     {
       "file": "source-code.txt",
-      "strategy": "generic",
+      "strategy": "passthrough-file-view",
       "inBytes": 3780,
       "outBytes": 3780,
       "ratio": 1,
@@ -228,10 +228,10 @@
       "file": "npm-audit.json",
       "strategy": "npm-audit",
       "inBytes": 1058,
-      "outBytes": 197,
-      "ratio": 0.186,
+      "outBytes": 276,
+      "ratio": 0.261,
       "estTokensIn": 265,
-      "estTokensOut": 49,
+      "estTokensOut": 69,
       "lossy": true,
       "errorsKept": 2,
       "warningsKept": 0
@@ -268,6 +268,30 @@
       "ratio": 1,
       "estTokensIn": 69,
       "estTokensOut": 69,
+      "lossy": false,
+      "errorsKept": 0,
+      "warningsKept": 0
+    },
+    {
+      "file": "claude-settings.json",
+      "strategy": "passthrough-file-view",
+      "inBytes": 1515,
+      "outBytes": 1515,
+      "ratio": 1,
+      "estTokensIn": 379,
+      "estTokensOut": 379,
+      "lossy": false,
+      "errorsKept": 0,
+      "warningsKept": 0
+    },
+    {
+      "file": "ls-la.txt",
+      "strategy": "generic",
+      "inBytes": 1027,
+      "outBytes": 1027,
+      "ratio": 1,
+      "estTokensIn": 257,
+      "estTokensOut": 257,
       "lossy": false,
       "errorsKept": 0,
       "warningsKept": 0

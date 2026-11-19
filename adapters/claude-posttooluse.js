@@ -19,6 +19,7 @@ const {
   maybeLog,
   extractExitCode,
   isFileDump,
+  isFileView,
   requestsEnumeration,
   extractRelevanceTokens,
   pressureScale,
@@ -95,6 +96,9 @@ function compressionOutput(evt, tail) {
       maybeLog('claude', null, null, { command: String(command), bypass: true, recovery });
       return;
     }
+    // A shell view of a source/config file passes untouched, like a source
+    // Read — decided before the transcript tail is parsed, so it costs nothing.
+    if (evt.tool_name === 'Bash' && isFileView(command)) return;
     let scale = 1;
     let pressureBand = pressureState.pressureBand || 'low';
     if (process.env.TRIM_ADAPTIVE !== 'off') {

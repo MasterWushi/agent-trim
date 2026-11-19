@@ -18,15 +18,17 @@ tokens again on every later turn the result stays in context.
 | go-test-fail.txt | go-test | 2628 | 487 | 0.185 | 657 | 122 | yes | 6 | 0 |
 | git-diffstat.txt | diffstat | 3000 | 2071 | 0.69 | 750 | 518 | no | 0 | 0 |
 | jsonl.log | jsonl-log | 39701 | 2082 | 0.052 | 9925 | 521 | yes | 5 | 0 |
-| source-code.txt | generic | 3780 | 3780 | 1 | 945 | 945 | no | 30 | 0 |
+| source-code.txt | passthrough-file-view | 3780 | 3780 | 1 | 945 | 945 | no | 30 | 0 |
 | adversarial-prose.txt | generic | 19642 | 19642 | 1 | 4911 | 4911 | no | 202 | 0 |
 | injection-shaped.txt | generic | 6588 | 340 | 0.052 | 1647 | 85 | yes | 0 | 0 |
 | unicode-crlf.txt | generic | 9303 | 200 | 0.021 | 2326 | 50 | yes | 1 | 0 |
 | progress-bars.txt | generic | 8329 | 131 | 0.016 | 2082 | 33 | no | 0 | 0 |
 | docker-build.txt | generic | 52438 | 2634 | 0.05 | 13110 | 659 | yes | 0 | 0 |
-| npm-audit.json | npm-audit | 1058 | 197 | 0.186 | 265 | 49 | yes | 2 | 0 |
+| npm-audit.json | npm-audit | 1058 | 276 | 0.261 | 265 | 69 | yes | 2 | 0 |
 | rustc-diagnostics.txt | diagnostic-block | 551 | 342 | 0.621 | 138 | 86 | yes | 2 | 1 |
 | mixed-diagnostics.txt | generic | 396 | 256 | 0.646 | 99 | 64 | yes | 2 | 1 |
 | injection-relevance.txt | generic | 275 | 275 | 1 | 69 | 69 | no | 0 | 0 |
+| claude-settings.json | passthrough-file-view | 1515 | 1515 | 1 | 379 | 379 | no | 0 | 0 |
+| ls-la.txt | generic | 1027 | 1027 | 1 | 257 | 257 | no | 0 | 0 |
 
-**Overall: 323909 → 57642 bytes (ratio 0.178), ~66567 estimated tokens saved per send; 0 false-elision failures.**
+**Overall: 326451 → 60263 bytes (ratio 0.185), ~66547 estimated tokens saved per send; 0 false-elision failures.**

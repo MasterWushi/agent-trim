@@ -25,13 +25,13 @@ agent-trim hooks into the moment *after* a tool runs and *before* the result rea
 | 2. Collapse progress bars | `10%\r50%\r100%` becomes just `100%` | No |
 | 3. Tidy whitespace | Trailing spaces gone, blank-line runs collapsed | No |
 | 4. Fold repeated lines | 3+ identical lines become `line  [trim hook: line repeated 47x]` | No — count preserved |
-| 5. Fold same-shaped lines | 5+ log lines with the same shape but varying values (`INFO worker job 8841` ×500) become one example + a count | Mostly — one exemplar kept, count preserved |
+| 5. Fold same-shaped lines | 5+ log lines with the same shape but varying values (`INFO worker job 8841` ×500) become one example + a count. Every varying token must carry a digit (id, count, time): a varying name breaks the run, so listings like `ls -l`, where each line names a different item, never fold | Mostly — one exemplar kept, count preserved |
 | 6. Sidecar huge outputs | Past ~15KB, the full cleaned text goes to a local file (`$TMPDIR/trim-sidecar/`) and a line-numbered digest takes its place in context: head, tail, every error/warning line with its real `L<n>` number and a categorical census ("2 errors, 3 warnings"), so a follow-up can read just the needed range. Shell outputs past ~28KB skip this (the harness may have already truncated them) | No — full text one read away |
 | 7. Shorten what remains | Cap by line count — **120 lines for passing output, 300 for failing output** (failure = evidence, keep more). Every error/warning line survives the cap wherever it sits; only surrounding noise is cut | Yes — clearly marked |
 
 Before the generic steps 5–7, a **structured-strategy layer** checks whether the output is a format it can compress semantically instead of line-by-line: eslint `--format json`, TypeScript compiler diagnostics, jest/vitest, pytest, `go test -v`, `git diff --stat`, JSON-Lines logs, `npm audit --json`, and generic compiler diagnostic blocks. Detection is deliberately conservative — a miss falls through to the generic pipeline, while diagnostic code frames stay attached and only normalized-identical blocks fold. `TRIM_STRATEGIES=off` disables the layer.
 
-Step 7 is failure-aware: a non-zero exit code (or error-looking text when no exit code is available) switches to the generous cap, and a plain `cat somefile` also gets the generous cap since file contents aren't "log noise". Because every error/warning line is kept *by construction*, the omission markers can make a guarantee the model can act on:
+Step 7 is failure-aware: a non-zero exit code (or error-looking text when no exit code is available) switches to the generous cap, and a command that only views files (`cat`, `head`/`tail`, `sed -n`, `jq`/`yq`, `awk`, optionally piped through filters such as `grep` or `sort`) passes through byte-identical, like a source Read — unless a viewed file is a log, a `.jsonl`, or a generated file, which keep the normal pipeline. Because every error/warning line is kept *by construction*, the omission markers can make a guarantee the model can act on:
 
 ```
 [trim hook: 745 lines omitted from this view, none with errors/warnings]

@@ -1,27 +1,27 @@
 {
   "byPosture": {
     "claude": {
-      "fixtures": 23,
-      "inBytes": 337392,
-      "outBytes": 66766,
+      "fixtures": 25,
+      "inBytes": 339934,
+      "outBytes": 69308,
       "sidecars": 0
     },
     "pi": {
-      "fixtures": 23,
-      "inBytes": 337392,
-      "outBytes": 66766,
+      "fixtures": 25,
+      "inBytes": 339934,
+      "outBytes": 69308,
       "sidecars": 0
     },
     "codex": {
-      "fixtures": 23,
-      "inBytes": 337392,
-      "outBytes": 66766,
+      "fixtures": 25,
+      "inBytes": 339934,
+      "outBytes": 69308,
       "sidecars": 0
     },
     "opencode": {
-      "fixtures": 23,
-      "inBytes": 337392,
-      "outBytes": 66766,
+      "fixtures": 25,
+      "inBytes": 339934,
+      "outBytes": 69308,
       "sidecars": 0
     }
   },
@@ -64,6 +64,18 @@
     },
     {
       "posture": "claude",
+      "file": "claude-settings.json",
+      "inBytes": 1515,
+      "outBytes": 1515,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "claude",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -179,6 +191,18 @@
       "lossy": true,
       "omittedLines": 290,
       "errors": 5,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "claude",
+      "file": "ls-la.txt",
+      "inBytes": 1027,
+      "outBytes": 1027,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
       "warnings": 0,
       "sidecar": false
     },
@@ -340,6 +364,18 @@
     },
     {
       "posture": "pi",
+      "file": "claude-settings.json",
+      "inBytes": 1515,
+      "outBytes": 1515,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "pi",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -455,6 +491,18 @@
       "lossy": true,
       "omittedLines": 290,
       "errors": 5,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "pi",
+      "file": "ls-la.txt",
+      "inBytes": 1027,
+      "outBytes": 1027,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
       "warnings": 0,
       "sidecar": false
     },
@@ -616,6 +664,18 @@
     },
     {
       "posture": "codex",
+      "file": "claude-settings.json",
+      "inBytes": 1515,
+      "outBytes": 1515,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "codex",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -731,6 +791,18 @@
       "lossy": true,
       "omittedLines": 290,
       "errors": 5,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "codex",
+      "file": "ls-la.txt",
+      "inBytes": 1027,
+      "outBytes": 1027,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
       "warnings": 0,
       "sidecar": false
     },
@@ -892,6 +964,18 @@
     },
     {
       "posture": "opencode",
+      "file": "claude-settings.json",
+      "inBytes": 1515,
+      "outBytes": 1515,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "opencode",
       "file": "clean-short.txt",
       "inBytes": 132,
       "outBytes": 132,
@@ -1007,6 +1091,18 @@
       "lossy": true,
       "omittedLines": 290,
       "errors": 5,
+      "warnings": 0,
+      "sidecar": false
+    },
+    {
+      "posture": "opencode",
+      "file": "ls-la.txt",
+      "inBytes": 1027,
+      "outBytes": 1027,
+      "strategy": "generic",
+      "lossy": false,
+      "omittedLines": 0,
+      "errors": 0,
       "warnings": 0,
       "sidecar": false
     },

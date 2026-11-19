@@ -3,6 +3,7 @@ const assert = require('assert');
 const {
   compress,
   isFileDump,
+  isFileView,
   looksLikeFailure,
   extractExitCode,
   requestsEnumeration,
@@ -37,6 +38,36 @@ assert.strictEqual(compress('x\nx\ny').out, 'x\nx\ny');
   assert.ok(out.includes('INFO worker processing job 1000'), 'exemplar kept');
   assert.ok(out.includes('[trim hook: 49 similar lines collapsed'), 'run collapsed');
   assert.ok(!out.includes('job 1049'), 'later lines folded');
+}
+// template collapse never folds a listing: each `ls -l` row names a different
+// file, and a varying name (no digit) breaks the run (regression: real session)
+{
+  const ls = require('fs').readFileSync(require('path').join(__dirname, 'fixtures', 'ls-la.txt'), 'utf8');
+  const out = compress(ls, { command: 'ls -la', exitCode: 0 }).out;
+  assert.ok(!out.includes('[trim'), 'directory listing passes without fold or marker');
+  for (const name of ['AGENTS.md', 'LICENSE', 'install.sh', 'vitest.config.ts', 'Makefile']) assert.ok(out.includes(name), `${name} kept`);
+}
+// a shell view of a config/source file passes byte-identical, even at high
+// session pressure (regression: `sed ... settings.json` lost its hooks block)
+{
+  const cfg = require('fs').readFileSync(require('path').join(__dirname, 'fixtures', 'claude-settings.json'), 'utf8');
+  for (const command of [
+    "sed -n '1,200p' ~/.claude/settings.json",
+    'cat ~/.claude/settings.json | sed -n 1,120p',
+    'jq . settings.json',
+    'cd /repo && head -100 src/config.yaml',
+    'cat pyproject.toml 2>/dev/null',
+  ]) {
+    assert.ok(isFileView(command), `file view: ${command}`);
+    assert.strictEqual(compress(cfg, { command, scale: 0.5, exitCode: 0 }).out, cfg, `byte-identical: ${command}`);
+  }
+  // without the file-view command the same text is capped at high pressure —
+  // the case above is what the exemption protects
+  assert.notStrictEqual(compress(cfg, { command: 'some-tool --dump', scale: 0.5 }).out, cfg, 'non-view output still capped');
+  for (const command of [
+    'ls -la', 'npm test', 'tail -n 500 logs/app.log', 'cat package-lock.json', 'jq . events.jsonl',
+    'curl -s x | jq .', 'cat a.json > b.json', 'cat $(ls)', 'jq .hooks', 'sed -i s/a/b/ f.js', 'cat a.js; npm test',
+  ]) assert.ok(!isFileView(command), `not a file view: ${command}`);
 }
 // template collapse never swallows a signal line
 {

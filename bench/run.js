@@ -93,6 +93,10 @@ const CASES = [
   { file: 'rustc-diagnostics.txt', opts: { exitCode: 1, command: 'cargo check' }, mustKeep: ['expected `u32`, found `String`', 'src/a.rs:10', 'src/b.rs:20', 'aborting due to 2 previous errors'] },
   { file: 'mixed-diagnostics.txt', opts: { exitCode: 1 }, mustKeep: ['Build system preamble', 'a.js:1:1: error E100: first'] },
   { file: 'injection-relevance.txt', opts: { exitCode: 0 }, mustEqual: true },
+  // regressions from real sessions: a config file viewed through sed at high
+  // pressure lost its hooks block; ls -la rows folded and lost file names
+  { file: 'claude-settings.json', opts: { exitCode: 0, command: "sed -n '1,200p' ~/.claude/settings.json", scale: 0.5 }, mustEqual: true },
+  { file: 'ls-la.txt', opts: { exitCode: 0, command: 'ls -la' }, mustEqual: true },
 ];
 
 const rows = [];
